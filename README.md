@@ -30,11 +30,14 @@ A comprehensive, production-ready framework for LLM and AI automation - from bas
 
 ### 🛠️ Core Components
 
-- **LLM Clients**: Unified interface for OpenAI, Anthropic Claude, and more
+- **LLM Clients**: Unified interface for OpenAI, Anthropic Claude, Ollama (local), and more
 - **RAG System**: Complete implementation with embeddings and vector stores
 - **Agent Framework**: Base classes for building intelligent agents
 - **Workflow Engine**: Chain and pipeline processing
-- **Plugin System**: Extensible architecture
+- **Tools Collection**: Pre-built tools for file ops, calculations, web search, etc.
+- **Document Loaders**: Support for PDF, Word, Markdown, and text files
+- **Usage Tracking**: Monitor token usage and costs across all LLM calls
+- **Response Caching**: Intelligent caching to reduce costs and improve speed
 - **Production Ready**: Logging, configuration management, error handling
 
 ### 🌟 Highlights
@@ -180,6 +183,12 @@ python examples/level2_intermediate/01_rag_basic.py
 
 # Function calling
 python examples/level2_intermediate/02_function_calling.py
+
+# Workflow automation
+python examples/level2_intermediate/03_workflow_automation.py
+
+# Document processing
+python examples/level2_intermediate/04_document_processing.py
 ```
 
 ### Level 3 - Advanced
@@ -189,9 +198,26 @@ python examples/level2_intermediate/02_function_calling.py
 python examples/level3_advanced/01_multi_agent.py
 ```
 
+### Interactive Demos
+
+```bash
+# Chatbot with memory
+python examples/demos/chatbot_demo.py
+
+# Document Q&A system
+python examples/demos/document_qa_demo.py
+
+# AI code assistant
+python examples/demos/code_assistant_demo.py
+```
+
 ## 📖 Documentation
 
-Detailed documentation is available in the `docs/` directory.
+Comprehensive documentation:
+
+- **[Getting Started Guide](docs/GETTING_STARTED.md)** - Complete setup and first steps
+- **[API Reference](docs/API_REFERENCE.md)** - Detailed API documentation
+- **Examples** - See `examples/` directory for code samples
 
 ## 🏗️ Framework Architecture
 
@@ -281,11 +307,19 @@ This framework is built using modern AI technologies and best practices from:
 
 - [x] Core framework implementation
 - [x] Level 1-3 examples
-- [ ] More demo applications
+- [x] Interactive demo applications
+- [x] Comprehensive test suite
+- [x] Document loaders (PDF, Word, Markdown, Text)
+- [x] Common tools collection
+- [x] Local LLM support (Ollama)
+- [x] Usage tracking and cost monitoring
+- [x] Response caching system
+- [x] Complete API documentation
 - [ ] Web UI with Streamlit
-- [ ] Integration with more LLM providers
-- [ ] Advanced agent patterns
-- [ ] Comprehensive test suite
+- [ ] Integration with more LLM providers (Google Gemini, Cohere)
+- [ ] Advanced RAG techniques (HyDE, MultiQuery, etc.)
+- [ ] Agent memory persistence
+- [ ] Production deployment guides
 
 ---
 

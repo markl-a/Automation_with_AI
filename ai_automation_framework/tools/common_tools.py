@@ -1,0 +1,423 @@
+"""Common tools for agents."""
+
+import os
+import json
+import requests
+from typing import Dict, Any, List, Optional
+from datetime import datetime
+from pathlib import Path
+
+
+class WebSearchTool:
+    """Tool for web searching (simulated)."""
+
+    @staticmethod
+    def search(query: str, num_results: int = 5) -> List[Dict[str, str]]:
+        """
+        Search the web for information.
+
+        Args:
+            query: Search query
+            num_results: Number of results to return
+
+        Returns:
+            List of search results
+        """
+        # In production, integrate with real search API (SerpAPI, Google Custom Search, etc.)
+        return [
+            {
+                "title": f"Result {i+1} for: {query}",
+                "url": f"https://example.com/result{i+1}",
+                "snippet": f"This is a sample search result for '{query}'"
+            }
+            for i in range(num_results)
+        ]
+
+
+class CalculatorTool:
+    """Tool for mathematical calculations."""
+
+    @staticmethod
+    def calculate(expression: str) -> Dict[str, Any]:
+        """
+        Evaluate a mathematical expression.
+
+        Args:
+            expression: Mathematical expression as string
+
+        Returns:
+            Calculation result
+        """
+        try:
+            # Safe evaluation of mathematical expressions
+            # Remove any potentially dangerous characters
+            safe_expr = expression.replace(" ", "")
+            allowed_chars = set("0123456789+-*/.()%")
+
+            if not all(c in allowed_chars for c in safe_expr):
+                return {"error": "Invalid characters in expression"}
+
+            result = eval(safe_expr)
+            return {
+                "expression": expression,
+                "result": result,
+                "success": True
+            }
+        except Exception as e:
+            return {
+                "expression": expression,
+                "error": str(e),
+                "success": False
+            }
+
+    @staticmethod
+    def calculate_percentage(value: float, percentage: float) -> float:
+        """Calculate percentage of a value."""
+        return (value * percentage) / 100
+
+    @staticmethod
+    def calculate_compound_interest(
+        principal: float,
+        rate: float,
+        time: float,
+        n: int = 1
+    ) -> Dict[str, float]:
+        """
+        Calculate compound interest.
+
+        Args:
+            principal: Initial amount
+            rate: Annual interest rate (as percentage)
+            time: Time in years
+            n: Number of times interest is compounded per year
+
+        Returns:
+            Dictionary with calculation details
+        """
+        amount = principal * (1 + (rate/100)/n) ** (n * time)
+        interest = amount - principal
+
+        return {
+            "principal": principal,
+            "rate": rate,
+            "time": time,
+            "compound_frequency": n,
+            "final_amount": round(amount, 2),
+            "interest_earned": round(interest, 2)
+        }
+
+
+class FileSystemTool:
+    """Tool for file system operations."""
+
+    @staticmethod
+    def read_file(file_path: str, encoding: str = "utf-8") -> Dict[str, Any]:
+        """
+        Read a text file.
+
+        Args:
+            file_path: Path to the file
+            encoding: File encoding
+
+        Returns:
+            File content and metadata
+        """
+        try:
+            path = Path(file_path)
+
+            if not path.exists():
+                return {"error": f"File not found: {file_path}", "success": False}
+
+            if not path.is_file():
+                return {"error": f"Not a file: {file_path}", "success": False}
+
+            content = path.read_text(encoding=encoding)
+
+            return {
+                "path": str(path.absolute()),
+                "content": content,
+                "size": path.stat().st_size,
+                "lines": len(content.splitlines()),
+                "success": True
+            }
+        except Exception as e:
+            return {"error": str(e), "success": False}
+
+    @staticmethod
+    def write_file(
+        file_path: str,
+        content: str,
+        encoding: str = "utf-8"
+    ) -> Dict[str, Any]:
+        """
+        Write content to a file.
+
+        Args:
+            file_path: Path to the file
+            content: Content to write
+            encoding: File encoding
+
+        Returns:
+            Operation result
+        """
+        try:
+            path = Path(file_path)
+            path.parent.mkdir(parents=True, exist_ok=True)
+            path.write_text(content, encoding=encoding)
+
+            return {
+                "path": str(path.absolute()),
+                "size": path.stat().st_size,
+                "success": True
+            }
+        except Exception as e:
+            return {"error": str(e), "success": False}
+
+    @staticmethod
+    def list_directory(dir_path: str) -> Dict[str, Any]:
+        """
+        List contents of a directory.
+
+        Args:
+            dir_path: Directory path
+
+        Returns:
+            Directory contents
+        """
+        try:
+            path = Path(dir_path)
+
+            if not path.exists():
+                return {"error": f"Directory not found: {dir_path}", "success": False}
+
+            if not path.is_dir():
+                return {"error": f"Not a directory: {dir_path}", "success": False}
+
+            files = []
+            directories = []
+
+            for item in path.iterdir():
+                if item.is_file():
+                    files.append({
+                        "name": item.name,
+                        "size": item.stat().st_size,
+                        "modified": datetime.fromtimestamp(item.stat().st_mtime).isoformat()
+                    })
+                elif item.is_dir():
+                    directories.append(item.name)
+
+            return {
+                "path": str(path.absolute()),
+                "files": files,
+                "directories": directories,
+                "total_items": len(files) + len(directories),
+                "success": True
+            }
+        except Exception as e:
+            return {"error": str(e), "success": False}
+
+
+class DateTimeTool:
+    """Tool for date and time operations."""
+
+    @staticmethod
+    def get_current_datetime(timezone: str = "UTC") -> Dict[str, str]:
+        """
+        Get current date and time.
+
+        Args:
+            timezone: Timezone (currently only UTC)
+
+        Returns:
+            Current datetime information
+        """
+        now = datetime.now()
+
+        return {
+            "datetime": now.isoformat(),
+            "date": now.strftime("%Y-%m-%d"),
+            "time": now.strftime("%H:%M:%S"),
+            "timestamp": int(now.timestamp()),
+            "weekday": now.strftime("%A"),
+            "timezone": timezone
+        }
+
+    @staticmethod
+    def calculate_date_difference(
+        date1: str,
+        date2: str,
+        format: str = "%Y-%m-%d"
+    ) -> Dict[str, Any]:
+        """
+        Calculate difference between two dates.
+
+        Args:
+            date1: First date string
+            date2: Second date string
+            format: Date format
+
+        Returns:
+            Date difference information
+        """
+        try:
+            d1 = datetime.strptime(date1, format)
+            d2 = datetime.strptime(date2, format)
+            diff = abs((d2 - d1).days)
+
+            return {
+                "date1": date1,
+                "date2": date2,
+                "difference_days": diff,
+                "difference_weeks": diff // 7,
+                "difference_months": diff // 30,
+                "success": True
+            }
+        except Exception as e:
+            return {"error": str(e), "success": False}
+
+
+class DataProcessingTool:
+    """Tool for data processing operations."""
+
+    @staticmethod
+    def parse_json(json_string: str) -> Dict[str, Any]:
+        """
+        Parse JSON string.
+
+        Args:
+            json_string: JSON string
+
+        Returns:
+            Parsed data or error
+        """
+        try:
+            data = json.loads(json_string)
+            return {"data": data, "success": True}
+        except json.JSONDecodeError as e:
+            return {"error": str(e), "success": False}
+
+    @staticmethod
+    def to_json(data: Any, indent: int = 2) -> Dict[str, Any]:
+        """
+        Convert data to JSON string.
+
+        Args:
+            data: Data to convert
+            indent: JSON indentation
+
+        Returns:
+            JSON string or error
+        """
+        try:
+            json_string = json.dumps(data, indent=indent)
+            return {"json": json_string, "success": True}
+        except Exception as e:
+            return {"error": str(e), "success": False}
+
+    @staticmethod
+    def count_words(text: str) -> Dict[str, Any]:
+        """
+        Count words in text.
+
+        Args:
+            text: Text to analyze
+
+        Returns:
+            Word count statistics
+        """
+        words = text.split()
+        unique_words = set(word.lower() for word in words)
+
+        return {
+            "total_words": len(words),
+            "unique_words": len(unique_words),
+            "characters": len(text),
+            "characters_no_spaces": len(text.replace(" ", "")),
+            "lines": len(text.splitlines()),
+            "success": True
+        }
+
+
+# Tool schemas for OpenAI function calling
+TOOL_SCHEMAS = {
+    "web_search": {
+        "type": "function",
+        "function": {
+            "name": "web_search",
+            "description": "Search the web for information",
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "query": {
+                        "type": "string",
+                        "description": "Search query"
+                    },
+                    "num_results": {
+                        "type": "integer",
+                        "description": "Number of results to return",
+                        "default": 5
+                    }
+                },
+                "required": ["query"]
+            }
+        }
+    },
+    "calculator": {
+        "type": "function",
+        "function": {
+            "name": "calculator",
+            "description": "Calculate a mathematical expression",
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "expression": {
+                        "type": "string",
+                        "description": "Mathematical expression to evaluate (e.g., '2+2', '10*5')"
+                    }
+                },
+                "required": ["expression"]
+            }
+        }
+    },
+    "read_file": {
+        "type": "function",
+        "function": {
+            "name": "read_file",
+            "description": "Read content from a text file",
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "file_path": {
+                        "type": "string",
+                        "description": "Path to the file to read"
+                    }
+                },
+                "required": ["file_path"]
+            }
+        }
+    },
+    "get_datetime": {
+        "type": "function",
+        "function": {
+            "name": "get_datetime",
+            "description": "Get current date and time",
+            "parameters": {
+                "type": "object",
+                "properties": {}
+            }
+        }
+    }
+}
+
+
+# Tool registry mapping
+TOOL_REGISTRY = {
+    "web_search": WebSearchTool.search,
+    "calculator": CalculatorTool.calculate,
+    "read_file": FileSystemTool.read_file,
+    "write_file": FileSystemTool.write_file,
+    "list_directory": FileSystemTool.list_directory,
+    "get_datetime": DateTimeTool.get_current_datetime,
+    "parse_json": DataProcessingTool.parse_json,
+    "count_words": DataProcessingTool.count_words,
+}
