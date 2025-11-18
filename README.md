@@ -28,6 +28,20 @@ A comprehensive, production-ready framework for LLM and AI automation - from bas
 - Complex task planning
 - Agent collaboration patterns
 
+**Level 4 - Advanced Automation**
+- 17+ production-ready automation tools
+- Email, Database, Web Scraping
+- Task Scheduling, API Testing
+- Cloud Integration, DevOps
+- External workflow integration (Zapier, n8n, Airflow)
+
+**Level 5 - AI-Assisted Development**
+- AI Code Reviewer (quality, security, performance)
+- AI Debug Assistant
+- AI Documentation Generator
+- AI Test Generator
+- AI Refactoring Assistant
+
 ### 🛠️ Core Components
 
 - **LLM Clients**: Unified interface for OpenAI, Anthropic Claude, Ollama (local), and more
@@ -198,6 +212,42 @@ python examples/level2_intermediate/04_document_processing.py
 python examples/level3_advanced/01_multi_agent.py
 ```
 
+### Level 4 - Advanced Automation
+
+```bash
+# Email automation
+python examples/level4_advanced_automation/01_email_automation_example.py
+
+# Database automation
+python examples/level4_advanced_automation/02_database_automation_example.py
+
+# Web scraping
+python examples/level4_advanced_automation/03_web_scraping_example.py
+
+# All features demo
+python examples/level4_advanced_automation/07_all_features_demo.py
+```
+
+### Level 5 - AI-Assisted Development
+
+```bash
+# AI development tools demo
+python examples/level5_ai_assisted_dev/ai_dev_tools_demo.py
+```
+
+### Competition & Projects
+
+```bash
+# Kaggle competition assistant
+python examples/competitions/kaggle_assistant.py
+
+# Hackathon quick starter
+python examples/competitions/hackathon_starter.py
+
+# Social media manager
+python examples/real_world_projects/social_media_manager.py
+```
+
 ### Interactive Demos
 
 ```bash
@@ -213,11 +263,15 @@ python examples/demos/code_assistant_demo.py
 
 ## 📖 Documentation
 
-Comprehensive documentation:
+Comprehensive documentation and learning resources:
 
 - **[Getting Started Guide](docs/GETTING_STARTED.md)** - Complete setup and first steps
+- **[Learning Path](docs/LEARNING_PATH.md)** - 📚 從零基礎到精通的完整學習路徑（Level 0-5）
+- **[Competition Projects](docs/COMPETITION_PROJECTS.md)** - 🏆 Kaggle 和 Hackathon 項目模板
+- **[Practice Exercises](docs/PRACTICE_EXERCISES.md)** - 🎯 實戰練習題庫（50+ 練習題）
+- **[Advanced Features](docs/ADVANCED_FEATURES.md)** - 17+ 高級自動化功能
 - **[API Reference](docs/API_REFERENCE.md)** - Detailed API documentation
-- **Examples** - See `examples/` directory for code samples
+- **Examples** - See `examples/` directory for 30+ code samples
 
 ## 🏗️ Framework Architecture
 
