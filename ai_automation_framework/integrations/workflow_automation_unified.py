@@ -19,6 +19,7 @@ class WorkflowPlatform(Enum):
     TEMPORAL = "temporal"
     PREFECT = "prefect"
     AIRFLOW = "airflow"
+    CELERY = "celery"
 
 
 class WorkflowStatus(Enum):
@@ -173,6 +174,165 @@ class AirflowAdapter(BaseWorkflowAdapter):
         return self.client.list_dags()
 
 
+class TemporalAdapter(BaseWorkflowAdapter):
+    """Temporal.io 適配器"""
+
+    def __init__(self, host: str = "localhost:7233", namespace: str = "default", task_queue: str = "default"):
+        from .temporal_integration import TemporalIntegration
+        self.client = TemporalIntegration(host=host, namespace=namespace, task_queue=task_queue)
+        self._connected = False
+
+    async def _ensure_connected(self):
+        """確保已連接到 Temporal"""
+        if not self._connected:
+            await self.client.connect()
+            self._connected = True
+
+    def trigger_workflow(
+        self,
+        workflow_id: str,
+        data: Optional[Dict[str, Any]] = None
+    ) -> Dict[str, Any]:
+        """觸發 Temporal 工作流（同步包裝器）"""
+        import asyncio
+        try:
+            loop = asyncio.get_event_loop()
+        except RuntimeError:
+            loop = asyncio.new_event_loop()
+            asyncio.set_event_loop(loop)
+
+        async def _trigger():
+            await self._ensure_connected()
+            workflow_type = data.pop('workflow_type', workflow_id) if data else workflow_id
+            args = data.pop('args', []) if data else []
+            return await self.client.start_workflow(
+                workflow_id=workflow_id,
+                workflow_type=workflow_type,
+                args=args
+            )
+
+        return loop.run_until_complete(_trigger())
+
+    def get_workflow_status(
+        self,
+        execution_id: str
+    ) -> Dict[str, Any]:
+        """獲取工作流狀態"""
+        import asyncio
+        try:
+            loop = asyncio.get_event_loop()
+        except RuntimeError:
+            loop = asyncio.new_event_loop()
+            asyncio.set_event_loop(loop)
+
+        async def _get_status():
+            await self._ensure_connected()
+            return await self.client.get_workflow_result(execution_id)
+
+        return loop.run_until_complete(_get_status())
+
+    def list_workflows(self) -> Dict[str, Any]:
+        """列出工作流（Temporal 不直接支持，返回提示）"""
+        return {
+            'success': True,
+            'message': 'Temporal does not provide direct workflow listing. Use Temporal UI or tctl.'
+        }
+
+
+class PrefectAdapter(BaseWorkflowAdapter):
+    """Prefect 適配器"""
+
+    def __init__(self):
+        from .prefect_integration import PrefectIntegration
+        self.client = PrefectIntegration()
+
+    def trigger_workflow(
+        self,
+        workflow_id: str,
+        data: Optional[Dict[str, Any]] = None
+    ) -> Dict[str, Any]:
+        """觸發 Prefect Flow（同步包裝器）"""
+        import asyncio
+        try:
+            loop = asyncio.get_event_loop()
+        except RuntimeError:
+            loop = asyncio.new_event_loop()
+            asyncio.set_event_loop(loop)
+
+        async def _trigger():
+            return await self.client.create_flow_run(
+                flow_name=workflow_id,
+                parameters=data or {}
+            )
+
+        return loop.run_until_complete(_trigger())
+
+    def get_workflow_status(
+        self,
+        execution_id: str
+    ) -> Dict[str, Any]:
+        """獲取 Flow Run 狀態"""
+        import asyncio
+        try:
+            loop = asyncio.get_event_loop()
+        except RuntimeError:
+            loop = asyncio.new_event_loop()
+            asyncio.set_event_loop(loop)
+
+        async def _get_status():
+            return await self.client.get_flow_run_status(execution_id)
+
+        return loop.run_until_complete(_get_status())
+
+    def list_workflows(self) -> Dict[str, Any]:
+        """列出所有 Flows"""
+        import asyncio
+        try:
+            loop = asyncio.get_event_loop()
+        except RuntimeError:
+            loop = asyncio.new_event_loop()
+            asyncio.set_event_loop(loop)
+
+        async def _list():
+            return await self.client.list_flows()
+
+        return loop.run_until_complete(_list())
+
+
+class CeleryAdapter(BaseWorkflowAdapter):
+    """Celery 適配器"""
+
+    def __init__(self, broker_url: Optional[str] = None, backend_url: Optional[str] = None):
+        from .celery_integration import CeleryIntegration
+        self.client = CeleryIntegration(broker_url=broker_url, backend_url=backend_url)
+
+    def trigger_workflow(
+        self,
+        workflow_id: str,
+        data: Optional[Dict[str, Any]] = None
+    ) -> Dict[str, Any]:
+        """發送 Celery 任務"""
+        args = data.pop('args', []) if data else []
+        kwargs = data if data else {}
+
+        return self.client.send_task(
+            task_name=workflow_id,
+            args=args,
+            kwargs=kwargs
+        )
+
+    def get_workflow_status(
+        self,
+        execution_id: str
+    ) -> Dict[str, Any]:
+        """獲取任務狀態"""
+        return self.client.get_task_result(execution_id)
+
+    def list_workflows(self) -> Dict[str, Any]:
+        """獲取活動任務"""
+        return self.client.get_active_tasks()
+
+
 class UnifiedWorkflowManager:
     """統一工作流管理器"""
 
@@ -229,6 +389,30 @@ class UnifiedWorkflowManager:
         """註冊 Airflow"""
         adapter = AirflowAdapter(base_url, username, password)
         self.register_platform(WorkflowPlatform.AIRFLOW, adapter)
+
+    def register_temporal(
+        self,
+        host: str = "localhost:7233",
+        namespace: str = "default",
+        task_queue: str = "default"
+    ):
+        """註冊 Temporal"""
+        adapter = TemporalAdapter(host, namespace, task_queue)
+        self.register_platform(WorkflowPlatform.TEMPORAL, adapter)
+
+    def register_prefect(self):
+        """註冊 Prefect"""
+        adapter = PrefectAdapter()
+        self.register_platform(WorkflowPlatform.PREFECT, adapter)
+
+    def register_celery(
+        self,
+        broker_url: Optional[str] = None,
+        backend_url: Optional[str] = None
+    ):
+        """註冊 Celery"""
+        adapter = CeleryAdapter(broker_url, backend_url)
+        self.register_platform(WorkflowPlatform.CELERY, adapter)
 
     def trigger_workflow(
         self,
@@ -483,4 +667,7 @@ __all__ = [
     'MakeAdapter',
     'ZapierAdapter',
     'AirflowAdapter',
+    'TemporalAdapter',
+    'PrefectAdapter',
+    'CeleryAdapter',
 ]

@@ -14,6 +14,9 @@
   - [Make (Integromat)](#make-integromat-集成)
   - [Zapier](#zapier-集成)
   - [Apache Airflow](#apache-airflow-集成)
+  - [Temporal](#temporal-集成)
+  - [Prefect](#prefect-集成)
+  - [Celery](#celery-集成)
 - [統一接口使用](#統一接口使用)
 - [高級用法](#高級用法)
 - [最佳實踐](#最佳實踐)
@@ -29,6 +32,9 @@
 | **Make** | 工作流自動化 | ❌ | ❌ | Webhook、場景管理 |
 | **Zapier** | 工作流自動化 | ❌ | ❌ | Webhook、Zap 觸發 |
 | **Apache Airflow** | 數據管道 | ✅ | ✅ | DAG 管理、執行監控 |
+| **Temporal** | 分布式工作流引擎 | ✅ | ✅ | 工作流編排、長時間運行任務、狀態管理 |
+| **Prefect** | 現代數據工作流 | ✅ | ✅ | Flow 編排、調度、監控 |
+| **Celery** | 分布式任務隊列 | ✅ | ✅ | 異步任務、定時任務、任務鏈 |
 
 ---
 
@@ -62,6 +68,18 @@ ZAPIER_API_KEY=your_zapier_api_key
 AIRFLOW_BASE_URL=http://localhost:8080
 AIRFLOW_USERNAME=admin
 AIRFLOW_PASSWORD=admin
+
+# Temporal
+TEMPORAL_HOST=localhost:7233
+TEMPORAL_NAMESPACE=default
+TEMPORAL_TASK_QUEUE=ai-automation
+
+# Prefect
+# Prefect uses local configuration by default
+
+# Celery
+CELERY_BROKER_URL=redis://localhost:6379/0
+CELERY_RESULT_BACKEND=redis://localhost:6379/0
 ```
 
 ### 3. 基本使用
@@ -364,6 +382,348 @@ airflow.unpause_dag("dag_id")
 
 ---
 
+### Temporal 集成
+
+Temporal 是一個開源的分布式工作流引擎，用於構建可靠的、可擴展的應用程序。
+
+#### 基本功能
+
+```python
+from ai_automation_framework.integrations.temporal_integration import TemporalIntegration
+import asyncio
+
+async def main():
+    # 初始化
+    temporal = TemporalIntegration(
+        host="localhost:7233",
+        namespace="default",
+        task_queue="ai-automation"
+    )
+
+    # 連接到 Temporal
+    await temporal.connect()
+
+    # 1. 定義 Activity
+    @temporal.create_activity()
+    async def process_order(order_id: str):
+        print(f"處理訂單: {order_id}")
+        return {"order_id": order_id, "status": "processed"}
+
+    # 2. 定義 Workflow
+    @temporal.create_workflow()
+    async def order_workflow(order_id: str):
+        result = await process_order(order_id)
+        return result
+
+    # 3. 啟動 Workflow
+    result = await temporal.start_workflow(
+        workflow_id="order-001",
+        workflow_type="order_workflow",
+        args=["ORD-12345"]
+    )
+    print(f"工作流已啟動: {result}")
+
+    # 4. 查詢 Workflow 狀態
+    if result.get('success'):
+        status = await temporal.get_workflow_result(result['workflow_id'])
+        print(f"工作流狀態: {status}")
+
+    # 5. 發送信號到 Workflow
+    await temporal.signal_workflow(
+        workflow_id="order-001",
+        signal_name="approve",
+        args=[{"approved": True}]
+    )
+
+    # 6. 取消 Workflow
+    await temporal.cancel_workflow("order-001")
+
+asyncio.run(main())
+```
+
+#### 使用工作流構建器
+
+```python
+from ai_automation_framework.integrations.temporal_integration import TemporalWorkflowBuilder
+
+builder = TemporalWorkflowBuilder(temporal.client)
+
+# 註冊 Activity
+@builder.register_activity(name="send_notification")
+async def send_notification(user_id: str, message: str):
+    print(f"發送通知給 {user_id}: {message}")
+    return True
+
+# 註冊 Workflow
+@builder.register_workflow(name="notification_workflow")
+async def notification_workflow(user_id: str):
+    await send_notification(user_id, "您有新消息")
+    return {"success": True}
+```
+
+#### 安裝和運行
+
+```bash
+# 安裝 Temporal
+pip install temporalio
+
+# 啟動 Temporal 服務器（開發環境）
+temporal server start-dev
+
+# 啟動 Worker（在另一個終端）
+python your_worker.py
+```
+
+---
+
+### Prefect 集成
+
+Prefect 是一個現代化的數據工作流編排平台，專注於可觀察性和易用性。
+
+#### 基本功能
+
+```python
+from ai_automation_framework.integrations.prefect_integration import PrefectIntegration
+import asyncio
+
+async def main():
+    # 初始化
+    prefect = PrefectIntegration()
+
+    # 1. 定義 Task
+    @prefect.create_task(name="extract_data")
+    async def extract_data(source: str):
+        print(f"從 {source} 提取數據")
+        return {"records": 1000}
+
+    @prefect.create_task(name="transform_data")
+    async def transform_data(data: dict):
+        print(f"轉換 {data['records']} 條記錄")
+        return {"transformed": True}
+
+    # 2. 定義 Flow
+    @prefect.create_flow(name="etl_pipeline")
+    async def etl_pipeline(source: str):
+        raw_data = await extract_data(source)
+        result = await transform_data(raw_data)
+        return result
+
+    # 3. 創建 Flow Run
+    flow_run = await prefect.create_flow_run(
+        flow_name="etl_pipeline",
+        parameters={"source": "database"}
+    )
+    print(f"Flow Run 已創建: {flow_run}")
+
+    # 4. 等待 Flow 完成
+    if flow_run.get('success'):
+        result = await prefect.wait_for_flow_run(flow_run['flow_run_id'])
+        print(f"Flow 執行結果: {result}")
+
+    # 5. 獲取 Flow Run 狀態
+    status = await prefect.get_flow_run_status(flow_run['flow_run_id'])
+    print(f"狀態: {status}")
+
+    # 6. 取消 Flow Run
+    await prefect.cancel_flow_run(flow_run['flow_run_id'])
+
+asyncio.run(main())
+```
+
+#### 定時調度
+
+```python
+from ai_automation_framework.integrations.prefect_integration import PrefectScheduler
+from datetime import timedelta
+
+async def setup_schedules():
+    scheduler = PrefectScheduler()
+
+    # 1. Cron 調度（每天早上 8 點）
+    await scheduler.create_cron_schedule(
+        flow_name="daily_report",
+        cron="0 8 * * *",
+        schedule_name="morning_report"
+    )
+
+    # 2. 間隔調度（每小時）
+    await scheduler.create_interval_schedule(
+        flow_name="health_check",
+        interval_seconds=3600,
+        schedule_name="hourly_health_check"
+    )
+
+    # 3. 列出所有調度
+    schedules = await scheduler.list_schedules()
+    print(f"當前調度: {schedules}")
+
+asyncio.run(setup_schedules())
+```
+
+#### 安裝和運行
+
+```bash
+# 安裝 Prefect
+pip install prefect
+
+# 啟動 Prefect 服務器
+prefect server start
+
+# 訪問 UI
+open http://localhost:4200
+```
+
+---
+
+### Celery 集成
+
+Celery 是一個分布式任務隊列，用於處理大量異步任務。
+
+#### 基本功能
+
+```python
+from ai_automation_framework.integrations.celery_integration import CeleryIntegration
+
+# 初始化
+celery = CeleryIntegration(
+    broker_url="redis://localhost:6379/0",
+    backend_url="redis://localhost:6379/0"
+)
+
+# 1. 定義任務
+@celery.create_task(name="send_email")
+def send_email(to: str, subject: str, body: str):
+    print(f"發送郵件到 {to}")
+    return {"sent": True}
+
+@celery.create_task(name="process_image")
+def process_image(image_path: str):
+    print(f"處理圖片: {image_path}")
+    return {"processed": True}
+
+# 2. 發送任務
+result = celery.send_task(
+    task_name="send_email",
+    kwargs={
+        "to": "user@example.com",
+        "subject": "Hello",
+        "body": "Test message"
+    }
+)
+print(f"任務已發送: {result}")
+
+# 3. 獲取任務結果
+if result.get('success'):
+    task_result = celery.get_task_result(result['task_id'])
+    print(f"任務結果: {task_result}")
+
+# 4. 延遲任務（5秒後執行）
+delayed_result = celery.send_task(
+    task_name="send_email",
+    args=["admin@example.com", "Reminder", "Don't forget!"],
+    countdown=5
+)
+
+# 5. 撤銷任務
+celery.revoke_task(task_id=result['task_id'], terminate=True)
+```
+
+#### 任務鏈和組
+
+```python
+from celery import chain, group
+
+# 1. 任務鏈（順序執行）
+@celery.create_task(name="step1")
+def step1(data):
+    return {"step": 1, "data": data}
+
+@celery.create_task(name="step2")
+def step2(result):
+    return {"step": 2, "previous": result}
+
+# 創建任務鏈
+task_chain = chain(
+    step1.s("initial_data"),
+    step2.s()
+)
+
+# 2. 任務組（並行執行）
+@celery.create_task(name="process_file")
+def process_file(file_path):
+    return {"file": file_path, "processed": True}
+
+# 創建任務組
+task_group = group(
+    process_file.s("/data/file1.txt"),
+    process_file.s("/data/file2.txt"),
+    process_file.s("/data/file3.txt")
+)
+```
+
+#### 週期性任務
+
+```python
+from datetime import timedelta
+from celery.schedules import crontab
+
+# 添加每小時執行的任務
+celery.add_periodic_task(
+    schedule=timedelta(hours=1),
+    task_name="cleanup_task",
+    name="hourly_cleanup"
+)
+
+# 添加每天凌晨 2 點的備份任務
+celery.add_periodic_task(
+    schedule=crontab(hour=2, minute=0),
+    task_name="backup_task",
+    name="daily_backup"
+)
+```
+
+#### 任務監控
+
+```python
+from ai_automation_framework.integrations.celery_integration import CeleryMonitor
+
+monitor = CeleryMonitor(celery.app)
+
+# 1. 獲取活動任務
+active = celery.get_active_tasks()
+print(f"活動任務: {active}")
+
+# 2. 獲取統計信息
+stats = monitor.get_stats()
+print(f"統計信息: {stats}")
+
+# 3. Ping Workers
+ping = monitor.ping_workers()
+print(f"Worker 狀態: {ping}")
+```
+
+#### 安裝和運行
+
+```bash
+# 安裝 Celery 和 Redis
+pip install celery[redis]
+
+# 啟動 Redis
+redis-server
+
+# 啟動 Celery Worker
+celery -A your_app worker --loglevel=info
+
+# 啟動 Celery Beat（定時任務）
+celery -A your_app beat
+
+# 監控任務（使用 Flower）
+pip install flower
+celery -A your_app flower
+```
+
+---
+
 ## 統一接口使用
 
 ### 單平台使用
@@ -397,6 +757,9 @@ manager.register_n8n("http://localhost:5678", "n8n_key")
 manager.register_zapier(webhook_url="https://hooks.zapier.com/...")
 manager.register_make(api_token="make_token")
 manager.register_airflow("http://localhost:8080", "admin", "password")
+manager.register_temporal(host="localhost:7233")
+manager.register_prefect()
+manager.register_celery(broker_url="redis://localhost:6379/0")
 
 # 廣播觸發
 results = manager.broadcast_trigger(
