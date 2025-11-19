@@ -96,6 +96,9 @@ class ProjectValidator:
             ("ai_automation_framework/integrations/zapier_integration_enhanced.py", "Zapier 增強集成"),
             ("ai_automation_framework/integrations/workflow_automation_unified.py", "統一工作流接口"),
             ("ai_automation_framework/integrations/airflow_integration.py", "Airflow 集成"),
+            ("ai_automation_framework/integrations/temporal_integration.py", "Temporal 分布式工作流集成"),
+            ("ai_automation_framework/integrations/prefect_integration.py", "Prefect 數據工作流集成"),
+            ("ai_automation_framework/integrations/celery_integration.py", "Celery 任務隊列集成"),
         ]
 
         for file_path, desc in workflow_files:
@@ -124,6 +127,9 @@ class ProjectValidator:
         example_files = [
             ("examples/real_world_applications/customer_service_automation.py", "客戶服務自動化"),
             ("examples/workflow_automation/unified_workflow_example.py", "統一工作流示例"),
+            ("examples/workflow_automation/temporal_example.py", "Temporal 工作流示例"),
+            ("examples/workflow_automation/prefect_example.py", "Prefect 工作流示例"),
+            ("examples/workflow_automation/celery_example.py", "Celery 任務隊列示例"),
         ]
 
         for file_path, desc in example_files:
@@ -216,8 +222,11 @@ class ProjectValidator:
             "✅ n8n 工作流集成（完整 API）",
             "✅ Make (Integromat) 集成",
             "✅ Zapier 增強集成",
-            "✅ Airflow 集成",
-            "✅ 統一工作流管理接口",
+            "✅ Airflow 數據管道集成",
+            "✅ Temporal 分布式工作流引擎",
+            "✅ Prefect 現代數據工作流",
+            "✅ Celery 分布式任務隊列",
+            "✅ 統一工作流管理接口（支持 7 個平台）",
             "✅ 工作流編排器（順序/並行執行）",
             "✅ 音頻處理（STT、TTS）",
             "✅ 視頻處理（提取、剪輯、字幕）",

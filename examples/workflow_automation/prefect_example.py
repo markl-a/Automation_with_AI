@@ -260,7 +260,7 @@ async def example_scheduled_flows():
         parameters={"report_date": datetime.now().strftime("%Y-%m-%d")}
     )
 
-    print(f("✅ 間隔調度已創建: {interval_result}")
+    print(f"✅ 間隔調度已創建: {interval_result}")
 
     # 列出所有調度
     print("\n列出所有調度...")

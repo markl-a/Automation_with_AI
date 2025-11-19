@@ -82,6 +82,13 @@ def check_dependencies():
             ("openpyxl", "Excel 處理"),
             ("schedule", "任務調度"),
         ],
+
+        # 工作流編排框架
+        "Workflow Orchestration": [
+            ("temporalio", "Temporal.io 分布式工作流引擎"),
+            ("prefect", "Prefect 現代數據工作流"),
+            ("celery", "Celery 分布式任務隊列"),
+        ],
     }
 
     print()
