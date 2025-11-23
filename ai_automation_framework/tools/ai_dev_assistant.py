@@ -210,6 +210,16 @@ class AIDebugAssistant:
         Returns:
             調試結果
         """
+        # 構建堆棧跟蹤部分
+        stack_trace_section = ""
+        if stack_trace:
+            stack_trace_section = f"## 堆棧跟蹤\n```\n{stack_trace}\n```\n\n"
+
+        # 構建上下文部分
+        context_section = ""
+        if context:
+            context_section = f"## 額外上下文\n{context}\n\n"
+
         prompt = f"""
         幫助調試以下錯誤：
 
@@ -223,11 +233,7 @@ class AIDebugAssistant:
         {code}
         ```
 
-        {f"## 堆棧跟蹤\n```\n{stack_trace}\n```" if stack_trace else ""}
-
-        {f"## 額外上下文\n{context}" if context else ""}
-
-        請提供：
+        {stack_trace_section}{context_section}請提供：
 
         ## 1. 錯誤分析
         - 錯誤類型
@@ -279,6 +285,11 @@ class AIDebugAssistant:
             "detailed": "提供詳細的逐行解釋，包含所有細節"
         }
 
+        # 構建詳細分析部分
+        detailed_section = ""
+        if detail_level == "detailed":
+            detailed_section = "## 逐行分析\n逐行解釋代碼\n\n"
+
         prompt = f"""
         請解釋以下 {language} 代碼：
 
@@ -302,9 +313,7 @@ class AIDebugAssistant:
         ## 實際應用
         這種代碼在實際中的應用場景
 
-        {f"## 逐行分析\n逐行解釋代碼" if detail_level == "detailed" else ""}
-
-        清晰、易懂、有教育意義。
+        {detailed_section}清晰、易懂、有教育意義。
         """
 
         return self.client.simple_chat(prompt)
