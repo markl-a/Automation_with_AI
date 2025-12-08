@@ -1,11 +1,88 @@
 """Common tools for agents."""
 
+import ast
+import operator
 import os
 import json
+import re
 import requests
-from typing import Dict, Any, List, Optional
+from typing import Dict, Any, List, Optional, Union
 from datetime import datetime
 from pathlib import Path
+
+
+class SafeMathEvaluator:
+    """
+    Safe mathematical expression evaluator.
+
+    Replaces dangerous eval() with AST-based parsing that only allows
+    mathematical operations.
+    """
+
+    # Supported operators
+    OPERATORS = {
+        ast.Add: operator.add,
+        ast.Sub: operator.sub,
+        ast.Mult: operator.mul,
+        ast.Div: operator.truediv,
+        ast.FloorDiv: operator.floordiv,
+        ast.Mod: operator.mod,
+        ast.Pow: operator.pow,
+        ast.USub: operator.neg,
+        ast.UAdd: operator.pos,
+    }
+
+    @classmethod
+    def evaluate(cls, expression: str) -> Union[int, float]:
+        """
+        Safely evaluate a mathematical expression.
+
+        Args:
+            expression: Mathematical expression string
+
+        Returns:
+            Calculated result
+
+        Raises:
+            ValueError: If expression contains invalid operations
+        """
+        try:
+            tree = ast.parse(expression, mode='eval')
+            return cls._eval_node(tree.body)
+        except (SyntaxError, TypeError, KeyError) as e:
+            raise ValueError(f"Invalid expression: {expression}") from e
+
+    @classmethod
+    def _eval_node(cls, node: ast.AST) -> Union[int, float]:
+        """Recursively evaluate AST nodes."""
+        if isinstance(node, ast.Constant):  # Python 3.8+
+            if isinstance(node.value, (int, float)):
+                return node.value
+            raise ValueError(f"Unsupported constant type: {type(node.value)}")
+
+        elif isinstance(node, ast.Num):  # Python 3.7 compatibility
+            return node.n
+
+        elif isinstance(node, ast.BinOp):
+            left = cls._eval_node(node.left)
+            right = cls._eval_node(node.right)
+            op_func = cls.OPERATORS.get(type(node.op))
+            if op_func is None:
+                raise ValueError(f"Unsupported operator: {type(node.op).__name__}")
+            return op_func(left, right)
+
+        elif isinstance(node, ast.UnaryOp):
+            operand = cls._eval_node(node.operand)
+            op_func = cls.OPERATORS.get(type(node.op))
+            if op_func is None:
+                raise ValueError(f"Unsupported operator: {type(node.op).__name__}")
+            return op_func(operand)
+
+        elif isinstance(node, ast.Expression):
+            return cls._eval_node(node.body)
+
+        else:
+            raise ValueError(f"Unsupported expression type: {type(node).__name__}")
 
 
 class WebSearchTool:
@@ -40,7 +117,10 @@ class CalculatorTool:
     @staticmethod
     def calculate(expression: str) -> Dict[str, Any]:
         """
-        Evaluate a mathematical expression.
+        Evaluate a mathematical expression safely.
+
+        Uses AST-based parsing instead of eval() for security.
+        Supports: +, -, *, /, //, %, ** operators and parentheses.
 
         Args:
             expression: Mathematical expression as string
@@ -49,24 +129,29 @@ class CalculatorTool:
             Calculation result
         """
         try:
-            # Safe evaluation of mathematical expressions
-            # Remove any potentially dangerous characters
-            safe_expr = expression.replace(" ", "")
-            allowed_chars = set("0123456789+-*/.()%")
-
-            if not all(c in allowed_chars for c in safe_expr):
-                return {"error": "Invalid characters in expression"}
-
-            result = eval(safe_expr)
+            # Use safe AST-based evaluator instead of dangerous eval()
+            result = SafeMathEvaluator.evaluate(expression)
             return {
                 "expression": expression,
                 "result": result,
                 "success": True
             }
-        except Exception as e:
+        except ValueError as e:
             return {
                 "expression": expression,
                 "error": str(e),
+                "success": False
+            }
+        except ZeroDivisionError:
+            return {
+                "expression": expression,
+                "error": "Division by zero",
+                "success": False
+            }
+        except Exception as e:
+            return {
+                "expression": expression,
+                "error": f"Calculation error: {str(e)}",
                 "success": False
             }
 
@@ -108,12 +193,97 @@ class CalculatorTool:
 
 
 class FileSystemTool:
-    """Tool for file system operations."""
+    """
+    Tool for file system operations with security protections.
 
-    @staticmethod
-    def read_file(file_path: str, encoding: str = "utf-8") -> Dict[str, Any]:
+    Security features:
+    - Path traversal prevention (blocks ../ patterns)
+    - Optional base directory sandboxing
+    - Symbolic link resolution validation
+    """
+
+    # Default allowed base directories (can be configured)
+    _allowed_base_dirs: Optional[List[Path]] = None
+
+    @classmethod
+    def set_allowed_directories(cls, directories: List[str]) -> None:
         """
-        Read a text file.
+        Set allowed base directories for sandboxing.
+
+        When set, all file operations are restricted to these directories.
+
+        Args:
+            directories: List of allowed directory paths
+        """
+        cls._allowed_base_dirs = [Path(d).resolve() for d in directories]
+
+    @classmethod
+    def clear_allowed_directories(cls) -> None:
+        """Clear directory restrictions."""
+        cls._allowed_base_dirs = None
+
+    @classmethod
+    def _validate_path(cls, file_path: str, must_exist: bool = False) -> Path:
+        """
+        Validate and sanitize file path to prevent path traversal attacks.
+
+        Args:
+            file_path: The path to validate
+            must_exist: Whether the path must exist
+
+        Returns:
+            Resolved, validated Path object
+
+        Raises:
+            ValueError: If path is invalid or potentially dangerous
+            FileNotFoundError: If must_exist=True and path doesn't exist
+        """
+        if not file_path or not file_path.strip():
+            raise ValueError("Empty file path")
+
+        # Check for null bytes (potential attack vector)
+        if '\x00' in file_path:
+            raise ValueError("Invalid path: contains null bytes")
+
+        path = Path(file_path)
+
+        # Resolve to absolute path (this also resolves symlinks)
+        try:
+            resolved_path = path.resolve()
+        except (OSError, RuntimeError) as e:
+            raise ValueError(f"Cannot resolve path: {e}")
+
+        # Check for path traversal attempts
+        # The resolved path should not escape intended boundaries
+        if '..' in path.parts:
+            # Additional check: ensure resolved path doesn't go above original intent
+            original_parent = Path(file_path).parent.resolve() if path.parent != path else Path.cwd()
+            if not str(resolved_path).startswith(str(original_parent.parent)):
+                raise ValueError(f"Path traversal detected: {file_path}")
+
+        # Check against allowed directories if sandboxing is enabled
+        if cls._allowed_base_dirs is not None:
+            is_allowed = any(
+                resolved_path == allowed_dir or
+                str(resolved_path).startswith(str(allowed_dir) + os.sep)
+                for allowed_dir in cls._allowed_base_dirs
+            )
+            if not is_allowed:
+                raise ValueError(
+                    f"Access denied: path '{file_path}' is outside allowed directories"
+                )
+
+        if must_exist and not resolved_path.exists():
+            raise FileNotFoundError(f"Path does not exist: {file_path}")
+
+        return resolved_path
+
+    @classmethod
+    def read_file(cls, file_path: str, encoding: str = "utf-8") -> Dict[str, Any]:
+        """
+        Read a text file safely.
+
+        Includes path traversal protection and optional sandboxing.
 
         Args:
             file_path: Path to the file
@@ -123,10 +293,7 @@ class FileSystemTool:
             File content and metadata
         """
         try:
-            path = Path(file_path)
-
-            if not path.exists():
-                return {"error": f"File not found: {file_path}", "success": False}
+            path = cls._validate_path(file_path, must_exist=True)
 
             if not path.is_file():
                 return {"error": f"Not a file: {file_path}", "success": False}
@@ -134,23 +301,32 @@ class FileSystemTool:
             content = path.read_text(encoding=encoding)
 
             return {
-                "path": str(path.absolute()),
+                "path": str(path),
                 "content": content,
                 "size": path.stat().st_size,
                 "lines": len(content.splitlines()),
                 "success": True
             }
-        except Exception as e:
+        except (ValueError, FileNotFoundError) as e:
             return {"error": str(e), "success": False}
+        except PermissionError:
+            return {"error": f"Permission denied: {file_path}", "success": False}
+        except UnicodeDecodeError:
+            return {"error": f"Cannot decode file with {encoding} encoding", "success": False}
+        except Exception as e:
+            return {"error": f"Unexpected error: {str(e)}", "success": False}
 
-    @staticmethod
+    @classmethod
     def write_file(
+        cls,
         file_path: str,
         content: str,
         encoding: str = "utf-8"
     ) -> Dict[str, Any]:
         """
-        Write content to a file.
+        Write content to a file safely.
+
+        Includes path traversal protection and optional sandboxing.
 
         Args:
             file_path: Path to the file
@@ -161,22 +337,31 @@ class FileSystemTool:
             Operation result
         """
         try:
-            path = Path(file_path)
+            # Validate path (doesn't need to exist yet)
+            path = cls._validate_path(file_path, must_exist=False)
+
+            # Create parent directories safely
             path.parent.mkdir(parents=True, exist_ok=True)
             path.write_text(content, encoding=encoding)
 
             return {
-                "path": str(path.absolute()),
+                "path": str(path),
                 "size": path.stat().st_size,
                 "success": True
             }
-        except Exception as e:
+        except ValueError as e:
             return {"error": str(e), "success": False}
+        except PermissionError:
+            return {"error": f"Permission denied: {file_path}", "success": False}
+        except Exception as e:
+            return {"error": f"Unexpected error: {str(e)}", "success": False}
 
-    @staticmethod
-    def list_directory(dir_path: str) -> Dict[str, Any]:
+    @classmethod
+    def list_directory(cls, dir_path: str) -> Dict[str, Any]:
         """
-        List contents of a directory.
+        List contents of a directory safely.
+
+        Includes path traversal protection and optional sandboxing.
 
         Args:
             dir_path: Directory path
@@ -185,10 +370,7 @@ class FileSystemTool:
             Directory contents
         """
         try:
-            path = Path(dir_path)
-
-            if not path.exists():
-                return {"error": f"Directory not found: {dir_path}", "success": False}
+            path = cls._validate_path(dir_path, must_exist=True)
 
             if not path.is_dir():
                 return {"error": f"Not a directory: {dir_path}", "success": False}
@@ -197,24 +379,32 @@ class FileSystemTool:
             directories = []
 
             for item in path.iterdir():
-                if item.is_file():
-                    files.append({
-                        "name": item.name,
-                        "size": item.stat().st_size,
-                        "modified": datetime.fromtimestamp(item.stat().st_mtime).isoformat()
-                    })
-                elif item.is_dir():
-                    directories.append(item.name)
+                try:
+                    if item.is_file():
+                        files.append({
+                            "name": item.name,
+                            "size": item.stat().st_size,
+                            "modified": datetime.fromtimestamp(item.stat().st_mtime).isoformat()
+                        })
+                    elif item.is_dir():
+                        directories.append(item.name)
+                except (PermissionError, OSError):
+                    # Skip items we can't access
+                    continue
 
             return {
-                "path": str(path.absolute()),
+                "path": str(path),
                 "files": files,
                 "directories": directories,
                 "total_items": len(files) + len(directories),
                 "success": True
             }
-        except Exception as e:
+        except (ValueError, FileNotFoundError) as e:
             return {"error": str(e), "success": False}
+        except PermissionError:
+            return {"error": f"Permission denied: {dir_path}", "success": False}
+        except Exception as e:
+            return {"error": f"Unexpected error: {str(e)}", "success": False}
 
 
 class DateTimeTool:

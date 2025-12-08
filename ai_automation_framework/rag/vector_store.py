@@ -78,7 +78,8 @@ class VectorStore(BaseComponent):
             ids = [f"doc_{i}" for i in range(len(documents))]
 
         if metadatas is None:
-            metadatas = [{}] * len(documents)
+            # Create independent dict instances to avoid shared reference issues
+            metadatas = [{} for _ in range(len(documents))]
 
         self.collection.add(
             documents=documents,
