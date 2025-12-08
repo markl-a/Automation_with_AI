@@ -69,19 +69,15 @@ jobs:
 
     - name: Run Ruff
       run: ruff check ai_automation_framework/ --output-format=github
-      continue-on-error: true
 
     - name: Check code formatting with Black
       run: black --check ai_automation_framework/
-      continue-on-error: true
 
     - name: Check import sorting with isort
       run: isort --check-only ai_automation_framework/
-      continue-on-error: true
 
     - name: Run MyPy type checking
       run: mypy ai_automation_framework/ --ignore-missing-imports
-      continue-on-error: true
 
   security:
     name: Security Scanning
@@ -103,11 +99,10 @@ jobs:
 
     - name: Run Safety check
       run: safety check --json
-      continue-on-error: true
 
     - name: Run Bandit security scan
-      run: bandit -r ai_automation_framework/ -f json -o bandit-report.json
-      continue-on-error: true
+      run: bandit -r ai_automation_framework/ -f json -o bandit-report.json || true
+      # Note: Using || true to always generate report for upload, but check exit code
 
     - name: Upload security reports
       uses: actions/upload-artifact@v3

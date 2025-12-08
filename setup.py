@@ -10,7 +10,7 @@ setup(
     description="A comprehensive framework for LLM and AI automation from basics to advanced",
     long_description=long_description,
     long_description_content_type="text/markdown",
-    url="https://github.com/yourusername/Automation_with_AI",
+    url="https://github.com/markl-a/Automation_with_AI",
     packages=find_packages(),
     classifiers=[
         "Development Status :: 3 - Alpha",
