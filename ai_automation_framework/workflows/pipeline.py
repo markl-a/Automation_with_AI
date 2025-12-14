@@ -51,27 +51,39 @@ class Pipeline(BaseComponent):
 
     def _get_execution_order(self) -> List[str]:
         """
-        Determine execution order based on dependencies.
+        Determine execution order based on dependencies using topological sort.
 
         Returns:
             List of stage names in execution order
+
+        Raises:
+            ValueError: If circular dependency is detected or dependency not found
         """
-        # Simple topological sort
-        visited = set()
+        # Use three-color marking for cycle detection
+        # WHITE = not visited, GRAY = in progress, BLACK = completed
+        WHITE, GRAY, BLACK = 0, 1, 2
+        color = {stage: WHITE for stage in self.stages}
         order = []
 
         def visit(stage: str):
-            if stage in visited:
+            if color[stage] == GRAY:
+                raise ValueError(f"Circular dependency detected involving stage: {stage}")
+            if color[stage] == BLACK:
                 return
-            visited.add(stage)
+
+            color[stage] = GRAY
 
             for dep in self.dependencies.get(stage, []):
+                if dep not in self.stages:
+                    raise ValueError(f"Dependency '{dep}' not found in pipeline stages")
                 visit(dep)
 
+            color[stage] = BLACK
             order.append(stage)
 
         for stage in self.stages:
-            visit(stage)
+            if color[stage] == WHITE:
+                visit(stage)
 
         return order
 

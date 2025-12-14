@@ -56,7 +56,8 @@ class AirflowIntegration:
                 url,
                 json=payload,
                 auth=self.auth,
-                headers={'Content-Type': 'application/json'}
+                headers={'Content-Type': 'application/json'},
+                timeout=30
             )
             response.raise_for_status()
 
@@ -77,7 +78,7 @@ class AirflowIntegration:
         try:
             url = f"{self.base_url}/api/v1/dags/{dag_id}/dagRuns/{dag_run_id}"
 
-            response = requests.get(url, auth=self.auth)
+            response = requests.get(url, auth=self.auth, timeout=30)
             response.raise_for_status()
 
             result = response.json()
@@ -98,7 +99,7 @@ class AirflowIntegration:
         try:
             url = f"{self.base_url}/api/v1/dags"
 
-            response = requests.get(url, auth=self.auth)
+            response = requests.get(url, auth=self.auth, timeout=30)
             response.raise_for_status()
 
             result = response.json()

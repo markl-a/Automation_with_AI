@@ -4,7 +4,7 @@ import os
 from typing import Optional, Dict, Any
 from pathlib import Path
 from dotenv import load_dotenv
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, ConfigDict
 
 
 class Config(BaseModel):
@@ -14,6 +14,8 @@ class Config(BaseModel):
     Loads configuration from environment variables and provides
     a centralized way to access settings.
     """
+
+    model_config = ConfigDict(arbitrary_types_allowed=True)
 
     # API Keys
     openai_api_key: Optional[str] = Field(default=None, description="OpenAI API key")
@@ -44,10 +46,6 @@ class Config(BaseModel):
     # Paths
     data_dir: Path = Field(default=Path("./data"), description="Data directory")
     logs_dir: Path = Field(default=Path("./logs"), description="Logs directory")
-
-    class Config:
-        """Pydantic configuration."""
-        arbitrary_types_allowed = True
 
     @classmethod
     def from_env(cls, env_file: Optional[str] = None) -> "Config":

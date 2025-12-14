@@ -2,6 +2,7 @@
 
 from typing import List, Optional, AsyncIterator
 from openai import OpenAI, AsyncOpenAI
+import openai
 from ai_automation_framework.llm.base_client import BaseLLMClient
 from ai_automation_framework.core.base import Message, Response
 from ai_automation_framework.core.config import get_config
@@ -67,30 +68,60 @@ class OpenAIClient(BaseLLMClient):
 
         Returns:
             Response object
+
+        Raises:
+            RuntimeError: If API call fails
         """
         self.initialize()
 
         openai_messages = self._messages_to_openai_format(messages)
 
-        response = self.client.chat.completions.create(
-            model=self.model,
-            messages=openai_messages,
-            temperature=temperature or self.temperature,
-            max_tokens=max_tokens or self.max_tokens,
-            **kwargs
-        )
+        try:
+            response = self.client.chat.completions.create(
+                model=self.model,
+                messages=openai_messages,
+                temperature=temperature or self.temperature,
+                max_tokens=max_tokens or self.max_tokens,
+                **kwargs
+            )
 
-        return Response(
-            content=response.choices[0].message.content,
-            role="assistant",
-            model=response.model,
-            usage={
-                "prompt_tokens": response.usage.prompt_tokens,
-                "completion_tokens": response.usage.completion_tokens,
-                "total_tokens": response.usage.total_tokens,
-            },
-            finish_reason=response.choices[0].finish_reason,
-        )
+            # Validate response
+            if not response.choices or not response.choices[0].message.content:
+                self.logger.warning("Empty response from OpenAI API")
+                content = ""
+            else:
+                content = response.choices[0].message.content
+
+            # Handle usage safely
+            usage = None
+            if response.usage:
+                usage = {
+                    "prompt_tokens": response.usage.prompt_tokens,
+                    "completion_tokens": response.usage.completion_tokens,
+                    "total_tokens": response.usage.total_tokens,
+                }
+
+            return Response(
+                content=content,
+                role="assistant",
+                model=response.model,
+                usage=usage,
+                finish_reason=response.choices[0].finish_reason if response.choices else None,
+                tool_calls=getattr(response.choices[0].message, 'tool_calls', None) if response.choices else None,
+            )
+
+        except openai.RateLimitError as e:
+            self.logger.error(f"OpenAI rate limit exceeded: {e}")
+            raise RuntimeError(f"Rate limit exceeded: {e}") from e
+        except openai.AuthenticationError as e:
+            self.logger.error(f"OpenAI authentication failed: {e}")
+            raise RuntimeError(f"Authentication failed: {e}") from e
+        except openai.APIError as e:
+            self.logger.error(f"OpenAI API error: {e}")
+            raise RuntimeError(f"API error: {e}") from e
+        except Exception as e:
+            self.logger.error(f"Unexpected error calling OpenAI: {e}")
+            raise RuntimeError(f"Failed to get OpenAI response: {e}") from e
 
     async def achat(
         self,
@@ -110,30 +141,60 @@ class OpenAIClient(BaseLLMClient):
 
         Returns:
             Response object
+
+        Raises:
+            RuntimeError: If API call fails
         """
         self.initialize()
 
         openai_messages = self._messages_to_openai_format(messages)
 
-        response = await self.async_client.chat.completions.create(
-            model=self.model,
-            messages=openai_messages,
-            temperature=temperature or self.temperature,
-            max_tokens=max_tokens or self.max_tokens,
-            **kwargs
-        )
+        try:
+            response = await self.async_client.chat.completions.create(
+                model=self.model,
+                messages=openai_messages,
+                temperature=temperature or self.temperature,
+                max_tokens=max_tokens or self.max_tokens,
+                **kwargs
+            )
 
-        return Response(
-            content=response.choices[0].message.content,
-            role="assistant",
-            model=response.model,
-            usage={
-                "prompt_tokens": response.usage.prompt_tokens,
-                "completion_tokens": response.usage.completion_tokens,
-                "total_tokens": response.usage.total_tokens,
-            },
-            finish_reason=response.choices[0].finish_reason,
-        )
+            # Validate response
+            if not response.choices or not response.choices[0].message.content:
+                self.logger.warning("Empty response from OpenAI API")
+                content = ""
+            else:
+                content = response.choices[0].message.content
+
+            # Handle usage safely
+            usage = None
+            if response.usage:
+                usage = {
+                    "prompt_tokens": response.usage.prompt_tokens,
+                    "completion_tokens": response.usage.completion_tokens,
+                    "total_tokens": response.usage.total_tokens,
+                }
+
+            return Response(
+                content=content,
+                role="assistant",
+                model=response.model,
+                usage=usage,
+                finish_reason=response.choices[0].finish_reason if response.choices else None,
+                tool_calls=getattr(response.choices[0].message, 'tool_calls', None) if response.choices else None,
+            )
+
+        except openai.RateLimitError as e:
+            self.logger.error(f"OpenAI rate limit exceeded: {e}")
+            raise RuntimeError(f"Rate limit exceeded: {e}") from e
+        except openai.AuthenticationError as e:
+            self.logger.error(f"OpenAI authentication failed: {e}")
+            raise RuntimeError(f"Authentication failed: {e}") from e
+        except openai.APIError as e:
+            self.logger.error(f"OpenAI API error: {e}")
+            raise RuntimeError(f"API error: {e}") from e
+        except Exception as e:
+            self.logger.error(f"Unexpected error calling OpenAI: {e}")
+            raise RuntimeError(f"Failed to get OpenAI response: {e}") from e
 
     async def stream_chat(
         self,
