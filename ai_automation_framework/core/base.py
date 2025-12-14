@@ -81,6 +81,7 @@ class Response(BaseModel):
     usage: Optional[Dict[str, int]] = None
     finish_reason: Optional[str] = None
     metadata: Dict[str, Any] = {}
+    tool_calls: Optional[Any] = None  # For function/tool calling support
 
     class Config:
         """Pydantic configuration."""

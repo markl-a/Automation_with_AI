@@ -227,9 +227,8 @@ def example_6_ai_workflow_integration():
 
     # 使用 AI 生成內容
     print("\n🤖 使用 AI 生成內容...")
-    content = ai_client.generate_text(
-        "為一個電商平台生成一條促銷郵件標題，要求簡潔有力。",
-        max_tokens=50
+    content = ai_client.simple_chat(
+        "為一個電商平台生成一條促銷郵件標題，要求簡潔有力。"
     )
     print(f"AI 生成: {content}")
 

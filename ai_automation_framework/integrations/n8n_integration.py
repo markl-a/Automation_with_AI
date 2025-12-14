@@ -56,7 +56,8 @@ class N8NIntegration:
                 method=method.upper(),
                 url=url,
                 json=data,
-                headers=headers
+                headers=headers,
+                timeout=30
             )
             response.raise_for_status()
 
@@ -77,7 +78,7 @@ class N8NIntegration:
             if self.api_key:
                 headers['X-N8N-API-KEY'] = self.api_key
 
-            response = requests.get(url, headers=headers)
+            response = requests.get(url, headers=headers, timeout=30)
             response.raise_for_status()
 
             return {
@@ -102,7 +103,7 @@ class N8NIntegration:
 
             payload = {"data": data} if data else {}
 
-            response = requests.post(url, json=payload, headers=headers)
+            response = requests.post(url, json=payload, headers=headers, timeout=30)
             response.raise_for_status()
 
             return {

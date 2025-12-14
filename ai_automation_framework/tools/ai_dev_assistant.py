@@ -210,6 +210,10 @@ class AIDebugAssistant:
         Returns:
             調試結果
         """
+        # 構建可選的堆棧跟蹤和上下文部分
+        stack_trace_section = f"## 堆棧跟蹤\n```\n{stack_trace}\n```" if stack_trace else ""
+        context_section = f"## 額外上下文\n{context}" if context else ""
+
         prompt = f"""
         幫助調試以下錯誤：
 
@@ -223,9 +227,9 @@ class AIDebugAssistant:
         {code}
         ```
 
-        {f"## 堆棧跟蹤\n```\n{stack_trace}\n```" if stack_trace else ""}
+        {stack_trace_section}
 
-        {f"## 額外上下文\n{context}" if context else ""}
+        {context_section}
 
         請提供：
 

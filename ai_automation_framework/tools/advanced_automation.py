@@ -148,6 +148,9 @@ class EmailAutomationTool:
 class DatabaseAutomationTool:
     """Tool for database automation and SQL query generation."""
 
+    # Valid SQL identifier pattern (alphanumeric and underscore, starting with letter/underscore)
+    _VALID_IDENTIFIER_PATTERN = r'^[a-zA-Z_][a-zA-Z0-9_]*$'
+
     def __init__(self, db_path: str = ":memory:"):
         """
         Initialize database automation tool.
@@ -155,8 +158,28 @@ class DatabaseAutomationTool:
         Args:
             db_path: Path to SQLite database
         """
+        import re
+        self._identifier_regex = re.compile(self._VALID_IDENTIFIER_PATTERN)
         self.db_path = db_path
         self.conn = None
+
+    def _validate_identifier(self, name: str) -> bool:
+        """
+        Validate SQL identifier to prevent SQL injection.
+
+        Args:
+            name: Table or column name to validate
+
+        Returns:
+            True if valid, raises ValueError if invalid
+        """
+        if not name or not self._identifier_regex.match(name):
+            raise ValueError(f"Invalid SQL identifier: {name}")
+        # Also check for SQL reserved words that could be dangerous
+        dangerous_words = {'drop', 'delete', 'truncate', 'insert', 'update', 'exec', 'execute'}
+        if name.lower() in dangerous_words:
+            raise ValueError(f"SQL reserved word not allowed as identifier: {name}")
+        return True
 
     def connect(self) -> Dict[str, Any]:
         """Connect to database."""
@@ -211,7 +234,7 @@ class DatabaseAutomationTool:
         limit: int = None
     ) -> str:
         """
-        Generate SELECT query.
+        Generate SELECT query with SQL injection protection.
 
         Args:
             table: Table name
@@ -222,21 +245,35 @@ class DatabaseAutomationTool:
         Returns:
             Generated SQL query
         """
-        cols = ", ".join(columns) if columns else "*"
+        # Validate table name
+        self._validate_identifier(table)
+
+        # Validate and build column list
+        if columns:
+            for col in columns:
+                self._validate_identifier(col)
+            cols = ", ".join(columns)
+        else:
+            cols = "*"
+
         query = f"SELECT {cols} FROM {table}"
 
         if where:
+            for k in where.keys():
+                self._validate_identifier(k)
             conditions = " AND ".join([f"{k} = ?" for k in where.keys()])
             query += f" WHERE {conditions}"
 
         if limit:
+            if not isinstance(limit, int) or limit < 0:
+                raise ValueError("LIMIT must be a non-negative integer")
             query += f" LIMIT {limit}"
 
         return query
 
     def generate_insert_query(self, table: str, data: Dict[str, Any]) -> tuple:
         """
-        Generate INSERT query.
+        Generate INSERT query with SQL injection protection.
 
         Args:
             table: Table name
@@ -245,6 +282,13 @@ class DatabaseAutomationTool:
         Returns:
             Tuple of (query, values)
         """
+        # Validate table name
+        self._validate_identifier(table)
+
+        # Validate column names
+        for col in data.keys():
+            self._validate_identifier(col)
+
         columns = ", ".join(data.keys())
         placeholders = ", ".join(["?" for _ in data])
         query = f"INSERT INTO {table} ({columns}) VALUES ({placeholders})"
@@ -252,7 +296,7 @@ class DatabaseAutomationTool:
 
     def create_table(self, table: str, schema: Dict[str, str]) -> Dict[str, Any]:
         """
-        Create a table.
+        Create a table with SQL injection protection.
 
         Args:
             table: Table name
@@ -261,6 +305,21 @@ class DatabaseAutomationTool:
         Returns:
             Result dictionary
         """
+        # Validate table name
+        self._validate_identifier(table)
+
+        # Validate column names and types
+        allowed_types = {'INTEGER', 'TEXT', 'REAL', 'BLOB', 'NULL', 'VARCHAR', 'CHAR', 'BOOLEAN', 'DATE', 'DATETIME', 'PRIMARY KEY', 'NOT NULL', 'UNIQUE', 'AUTOINCREMENT'}
+        for name, dtype in schema.items():
+            self._validate_identifier(name)
+            # Check that type only contains allowed keywords
+            type_parts = dtype.upper().split()
+            for part in type_parts:
+                # Remove any parentheses content like VARCHAR(255)
+                clean_part = part.split('(')[0]
+                if clean_part and clean_part not in allowed_types:
+                    raise ValueError(f"Invalid SQL type: {dtype}")
+
         columns_def = ", ".join([f"{name} {dtype}" for name, dtype in schema.items()])
         query = f"CREATE TABLE IF NOT EXISTS {table} ({columns_def})"
         return self.execute_query(query)

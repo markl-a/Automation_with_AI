@@ -40,7 +40,7 @@ class CalculatorTool:
     @staticmethod
     def calculate(expression: str) -> Dict[str, Any]:
         """
-        Evaluate a mathematical expression.
+        Evaluate a mathematical expression safely.
 
         Args:
             expression: Mathematical expression as string
@@ -48,25 +48,65 @@ class CalculatorTool:
         Returns:
             Calculation result
         """
+        import ast
+        import operator
+
+        # Define allowed operators
+        operators = {
+            ast.Add: operator.add,
+            ast.Sub: operator.sub,
+            ast.Mult: operator.mul,
+            ast.Div: operator.truediv,
+            ast.Mod: operator.mod,
+            ast.Pow: operator.pow,
+            ast.USub: operator.neg,
+            ast.UAdd: operator.pos,
+        }
+
+        def safe_eval(node):
+            """Safely evaluate an AST node."""
+            if isinstance(node, ast.Constant):  # Python 3.8+
+                if isinstance(node.value, (int, float)):
+                    return node.value
+                raise ValueError(f"Invalid constant: {node.value}")
+            elif isinstance(node, ast.Num):  # Python 3.7 compatibility
+                return node.n
+            elif isinstance(node, ast.BinOp):
+                op_type = type(node.op)
+                if op_type not in operators:
+                    raise ValueError(f"Unsupported operator: {op_type.__name__}")
+                left = safe_eval(node.left)
+                right = safe_eval(node.right)
+                return operators[op_type](left, right)
+            elif isinstance(node, ast.UnaryOp):
+                op_type = type(node.op)
+                if op_type not in operators:
+                    raise ValueError(f"Unsupported operator: {op_type.__name__}")
+                return operators[op_type](safe_eval(node.operand))
+            elif isinstance(node, ast.Expression):
+                return safe_eval(node.body)
+            else:
+                raise ValueError(f"Unsupported expression type: {type(node).__name__}")
+
         try:
-            # Safe evaluation of mathematical expressions
-            # Remove any potentially dangerous characters
-            safe_expr = expression.replace(" ", "")
-            allowed_chars = set("0123456789+-*/.()%")
-
-            if not all(c in allowed_chars for c in safe_expr):
-                return {"error": "Invalid characters in expression"}
-
-            result = eval(safe_expr)
+            # Parse expression into AST
+            tree = ast.parse(expression, mode='eval')
+            result = safe_eval(tree)
             return {
                 "expression": expression,
                 "result": result,
                 "success": True
             }
-        except Exception as e:
+        except (ValueError, SyntaxError, TypeError, ZeroDivisionError) as e:
             return {
                 "expression": expression,
                 "error": str(e),
+                "success": False
+            }
+        except Exception as e:
+            return {
+                "expression": expression,
+                "error": f"Evaluation error: {str(e)}",
                 "success": False
             }
 

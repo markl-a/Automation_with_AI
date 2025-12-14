@@ -172,10 +172,22 @@ class SocialMediaManager:
 
         ## 主要文案
         [吸引人的文案內容]
+        """
 
-        {"## Hashtags\n[相關標籤，5-10個]" if include_hashtags else ""}
+        # 動態添加可選部分
+        if include_hashtags:
+            prompt += """
+        ## Hashtags
+        [相關標籤，5-10個]
+        """
 
-        {"## Call-to-Action\n[行動呼籲]" if include_call_to_action else ""}
+        if include_call_to_action:
+            prompt += """
+        ## Call-to-Action
+        [行動呼籲]
+        """
+
+        prompt += """
 
         ## 最佳發布時間
         [建議的發布時間和原因]

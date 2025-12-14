@@ -49,7 +49,8 @@ class ZapierIntegration:
             response = requests.post(
                 url,
                 json=data,
-                headers={'Content-Type': 'application/json'}
+                headers={'Content-Type': 'application/json'},
+                timeout=30
             )
             response.raise_for_status()
 
