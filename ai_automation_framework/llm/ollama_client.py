@@ -221,18 +221,22 @@ class OllamaClient(BaseLLMClient):
             }
         }
 
-        async with aiohttp.ClientSession() as session:
-            async with session.post(url, json=payload) as response:
-                response.raise_for_status()
+        try:
+            async with aiohttp.ClientSession() as session:
+                async with session.post(url, json=payload) as response:
+                    response.raise_for_status()
 
-                async for line in response.content:
-                    if line:
-                        try:
-                            chunk = json.loads(line)
-                            if "response" in chunk:
-                                yield chunk["response"]
-                        except json.JSONDecodeError:
-                            continue
+                    async for line in response.content:
+                        if line:
+                            try:
+                                chunk = json.loads(line)
+                                if "response" in chunk:
+                                    yield chunk["response"]
+                            except json.JSONDecodeError:
+                                continue
+        except aiohttp.ClientError as e:
+            self.logger.error(f"Ollama stream request failed: {e}")
+            raise RuntimeError(f"Ollama stream request failed: {e}") from e
 
     def list_models(self) -> List[str]:
         """

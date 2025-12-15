@@ -219,15 +219,26 @@ class OpenAIClient(BaseLLMClient):
 
         openai_messages = self._messages_to_openai_format(messages)
 
-        stream = await self.async_client.chat.completions.create(
-            model=self.model,
-            messages=openai_messages,
-            temperature=temperature or self.temperature,
-            max_tokens=max_tokens or self.max_tokens,
-            stream=True,
-            **kwargs
-        )
+        try:
+            stream = await self.async_client.chat.completions.create(
+                model=self.model,
+                messages=openai_messages,
+                temperature=temperature or self.temperature,
+                max_tokens=max_tokens or self.max_tokens,
+                stream=True,
+                **kwargs
+            )
 
-        async for chunk in stream:
-            if chunk.choices[0].delta.content:
-                yield chunk.choices[0].delta.content
+            async for chunk in stream:
+                if chunk.choices and chunk.choices[0].delta.content:
+                    yield chunk.choices[0].delta.content
+
+        except openai.RateLimitError as e:
+            self.logger.error(f"OpenAI rate limit exceeded during stream: {e}")
+            raise RuntimeError(f"Rate limit exceeded: {e}") from e
+        except openai.AuthenticationError as e:
+            self.logger.error(f"OpenAI authentication failed during stream: {e}")
+            raise RuntimeError(f"Authentication failed: {e}") from e
+        except openai.APIError as e:
+            self.logger.error(f"OpenAI API error during stream: {e}")
+            raise RuntimeError(f"API error: {e}") from e

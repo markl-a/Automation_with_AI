@@ -227,6 +227,16 @@ class AnthropicClient(BaseLLMClient):
         if system_message:
             params["system"] = system_message
 
-        async with self.async_client.messages.stream(**params) as stream:
-            async for text in stream.text_stream:
-                yield text
+        try:
+            async with self.async_client.messages.stream(**params) as stream:
+                async for text in stream.text_stream:
+                    yield text
+        except anthropic.RateLimitError as e:
+            self.logger.error(f"Anthropic rate limit exceeded during stream: {e}")
+            raise RuntimeError(f"Rate limit exceeded: {e}") from e
+        except anthropic.AuthenticationError as e:
+            self.logger.error(f"Anthropic authentication failed during stream: {e}")
+            raise RuntimeError(f"Authentication failed: {e}") from e
+        except anthropic.APIError as e:
+            self.logger.error(f"Anthropic API error during stream: {e}")
+            raise RuntimeError(f"API error: {e}") from e
