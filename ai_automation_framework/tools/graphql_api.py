@@ -6,6 +6,8 @@ GraphQL API Support
 """
 
 import re
+import time
+import threading
 from typing import Dict, Any, List, Optional, Callable
 from datetime import datetime
 
@@ -24,6 +26,64 @@ try:
     HAS_FLASK = True
 except ImportError:
     HAS_FLASK = False
+
+
+class RateLimiter:
+    """
+    Rate limiter using token bucket algorithm.
+
+    The token bucket algorithm maintains a bucket with a maximum capacity.
+    Tokens are added at a constant rate (rate per second).
+    Each request consumes one token. If no tokens are available, requests must wait.
+    """
+
+    def __init__(self, rate: float):
+        """
+        Initialize rate limiter.
+
+        Args:
+            rate: Maximum number of requests per second (e.g., 2.0 = 2 requests/sec)
+        """
+        if rate <= 0:
+            raise ValueError("Rate must be positive")
+
+        self.rate = rate  # tokens per second
+        self.capacity = max(1.0, rate)  # maximum tokens
+        self.tokens = self.capacity  # current tokens available
+        self.last_update = time.time()
+        self.lock = threading.Lock()
+
+    def _add_tokens(self):
+        """Add tokens based on elapsed time since last update."""
+        now = time.time()
+        elapsed = now - self.last_update
+
+        # Add tokens based on elapsed time
+        self.tokens = min(self.capacity, self.tokens + elapsed * self.rate)
+        self.last_update = now
+
+    def wait_for_token(self):
+        """
+        Wait until a token is available and consume it.
+
+        This method blocks until rate limit allows the request.
+        """
+        with self.lock:
+            while True:
+                self._add_tokens()
+
+                if self.tokens >= 1.0:
+                    # Consume one token
+                    self.tokens -= 1.0
+                    return
+
+                # Calculate wait time
+                tokens_needed = 1.0 - self.tokens
+                wait_time = tokens_needed / self.rate
+
+                # Release lock while sleeping to allow other threads
+                # to check if tokens are available
+                time.sleep(min(wait_time, 0.1))
 
 
 # GraphQL 類型定義
@@ -245,14 +305,17 @@ class GraphQLClient:
     REQUEST_TIMEOUT = 30  # 30 seconds timeout for HTTP requests
     MAX_QUERY_LENGTH = 10000  # Maximum query length in characters
 
-    def __init__(self, endpoint: str):
+    def __init__(self, endpoint: str, rate_limit: Optional[float] = None):
         """
         初始化 GraphQL 客戶端
 
         Args:
             endpoint: GraphQL API 端點
+            rate_limit: Maximum requests per second (e.g., 2.0 = 2 requests/sec).
+                       If None, no rate limiting is applied.
         """
         self.endpoint = endpoint
+        self.rate_limiter = RateLimiter(rate_limit) if rate_limit else None
 
     def _validate_query(self, query: str) -> None:
         """
@@ -306,6 +369,10 @@ class GraphQLClient:
             ValueError: 如果查詢無效或響應格式錯誤
         """
         import requests
+
+        # Apply rate limiting if configured
+        if self.rate_limiter:
+            self.rate_limiter.wait_for_token()
 
         # Validate query before sending
         self._validate_query(query)

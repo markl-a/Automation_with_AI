@@ -20,6 +20,7 @@ class ZapierIntegration:
             webhook_url: Zapier webhook URL
         """
         self.webhook_url = webhook_url
+        self.session = requests.Session()
 
     def trigger_zap(
         self,
@@ -46,7 +47,7 @@ class ZapierIntegration:
             return {"success": False, "error": "No webhook URL provided"}
 
         try:
-            response = requests.post(
+            response = self.session.post(
                 url,
                 json=data,
                 headers={'Content-Type': 'application/json'},
@@ -108,6 +109,20 @@ class ZapierIntegration:
             "action": "log_event"
         }
         return self.trigger_zap(data, webhook_url)
+
+    def close(self) -> None:
+        """Close the HTTP session and cleanup resources."""
+        if hasattr(self, 'session'):
+            self.session.close()
+
+    def __enter__(self):
+        """Context manager entry."""
+        return self
+
+    def __exit__(self, exc_type, exc_val, exc_tb):
+        """Context manager exit."""
+        self.close()
+        return False
 
 
 # Example Zapier workflows you can create:

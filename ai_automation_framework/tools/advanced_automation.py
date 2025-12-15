@@ -10,6 +10,66 @@ import sqlite3
 import json
 from datetime import datetime, timedelta
 import re
+import time
+import threading
+
+
+class RateLimiter:
+    """
+    Rate limiter using token bucket algorithm.
+
+    The token bucket algorithm maintains a bucket with a maximum capacity.
+    Tokens are added at a constant rate (rate per second).
+    Each request consumes one token. If no tokens are available, requests must wait.
+    """
+
+    def __init__(self, rate: float):
+        """
+        Initialize rate limiter.
+
+        Args:
+            rate: Maximum number of requests per second (e.g., 2.0 = 2 requests/sec)
+        """
+        if rate <= 0:
+            raise ValueError("Rate must be positive")
+
+        self.rate = rate  # tokens per second
+        self.capacity = max(1.0, rate)  # maximum tokens
+        self.tokens = self.capacity  # current tokens available
+        self.last_update = time.time()
+        self.lock = threading.Lock()
+
+    def _add_tokens(self):
+        """Add tokens based on elapsed time since last update."""
+        now = time.time()
+        elapsed = now - self.last_update
+
+        # Add tokens based on elapsed time
+        self.tokens = min(self.capacity, self.tokens + elapsed * self.rate)
+        self.last_update = now
+
+    def wait_for_token(self):
+        """
+        Wait until a token is available and consume it.
+
+        This method blocks until rate limit allows the request.
+        """
+        with self.lock:
+            while True:
+                self._add_tokens()
+
+                if self.tokens >= 1.0:
+                    # Consume one token
+                    self.tokens -= 1.0
+                    return
+
+                # Calculate wait time
+                tokens_needed = 1.0 - self.tokens
+                wait_time = tokens_needed / self.rate
+
+                # Release lock while sleeping to allow other threads
+                # to check if tokens are available
+                time.sleep(min(wait_time, 0.1))
 
 
 class EmailAutomationTool:
@@ -333,8 +393,17 @@ class DatabaseAutomationTool:
 class WebScraperTool:
     """Tool for web scraping and data extraction."""
 
-    @staticmethod
-    def fetch_url(url: str, timeout: int = 30) -> Dict[str, Any]:
+    def __init__(self, rate_limit: Optional[float] = None):
+        """
+        Initialize web scraper tool.
+
+        Args:
+            rate_limit: Maximum requests per second (e.g., 2.0 = 2 requests/sec).
+                       If None, no rate limiting is applied.
+        """
+        self.rate_limiter = RateLimiter(rate_limit) if rate_limit else None
+
+    def fetch_url(self, url: str, timeout: int = 30) -> Dict[str, Any]:
         """
         Fetch content from URL.
 
@@ -345,6 +414,10 @@ class WebScraperTool:
         Returns:
             Response data
         """
+        # Apply rate limiting if configured
+        if self.rate_limiter:
+            self.rate_limiter.wait_for_token()
+
         try:
             # Validate URL
             if not url or not isinstance(url, str):
@@ -372,8 +445,7 @@ class WebScraperTool:
         except Exception as e:
             return {"success": False, "error": str(e)}
 
-    @staticmethod
-    def extract_links(html_content: str, base_url: str = None) -> Dict[str, Any]:
+    def extract_links(self, html_content: str, base_url: str = None) -> Dict[str, Any]:
         """
         Extract all links from HTML.
 
@@ -384,6 +456,10 @@ class WebScraperTool:
         Returns:
             Extracted links
         """
+        # Apply rate limiting if configured
+        if self.rate_limiter:
+            self.rate_limiter.wait_for_token()
+
         try:
             # Validate html_content
             if not html_content or not isinstance(html_content, str):
@@ -421,8 +497,7 @@ class WebScraperTool:
         except Exception as e:
             return {"success": False, "error": str(e)}
 
-    @staticmethod
-    def extract_text(html_content: str, tag: str = None) -> Dict[str, Any]:
+    def extract_text(self, html_content: str, tag: str = None) -> Dict[str, Any]:
         """
         Extract text from HTML.
 
@@ -433,6 +508,10 @@ class WebScraperTool:
         Returns:
             Extracted text
         """
+        # Apply rate limiting if configured
+        if self.rate_limiter:
+            self.rate_limiter.wait_for_token()
+
         try:
             # Validate html_content
             if not html_content or not isinstance(html_content, str):
@@ -457,8 +536,7 @@ class WebScraperTool:
         except Exception as e:
             return {"success": False, "error": str(e)}
 
-    @staticmethod
-    def extract_table_data(html_content: str) -> Dict[str, Any]:
+    def extract_table_data(self, html_content: str) -> Dict[str, Any]:
         """
         Extract table data from HTML.
 
