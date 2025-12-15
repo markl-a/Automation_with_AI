@@ -283,6 +283,9 @@ class AIDebugAssistant:
             "detailed": "提供詳細的逐行解釋，包含所有細節"
         }
 
+        # Build optional detailed analysis section
+        detailed_analysis = "## 逐行分析\n逐行解釋代碼" if detail_level == "detailed" else ""
+
         prompt = f"""
         請解釋以下 {language} 代碼：
 
@@ -306,7 +309,7 @@ class AIDebugAssistant:
         ## 實際應用
         這種代碼在實際中的應用場景
 
-        {f"## 逐行分析\n逐行解釋代碼" if detail_level == "detailed" else ""}
+        {detailed_analysis}
 
         清晰、易懂、有教育意義。
         """

@@ -12,7 +12,7 @@ class ZapierIntegration:
     This allows you to trigger Zapier zaps from your automation framework.
     """
 
-    def __init__(self, webhook_url: str = None):
+    def __init__(self, webhook_url: Optional[str] = None):
         """
         Initialize Zapier integration.
 
@@ -24,7 +24,7 @@ class ZapierIntegration:
     def trigger_zap(
         self,
         data: Dict[str, Any],
-        webhook_url: str = None
+        webhook_url: Optional[str] = None
     ) -> Dict[str, Any]:
         """
         Trigger a Zapier zap via webhook.
@@ -68,7 +68,7 @@ class ZapierIntegration:
         to: str,
         subject: str,
         body: str,
-        webhook_url: str = None
+        webhook_url: Optional[str] = None
     ) -> Dict[str, Any]:
         """Send email through Zapier."""
         data = {
@@ -84,7 +84,7 @@ class ZapierIntegration:
         task_name: str,
         description: str,
         priority: str = "medium",
-        webhook_url: str = None
+        webhook_url: Optional[str] = None
     ) -> Dict[str, Any]:
         """Create task in connected task manager through Zapier."""
         data = {
@@ -99,7 +99,7 @@ class ZapierIntegration:
         self,
         event_type: str,
         event_data: Dict[str, Any],
-        webhook_url: str = None
+        webhook_url: Optional[str] = None
     ) -> Dict[str, Any]:
         """Log event through Zapier."""
         data = {

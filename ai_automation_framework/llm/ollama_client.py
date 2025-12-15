@@ -1,6 +1,7 @@
 """Ollama client for local LLM inference."""
 
 from typing import List, Optional, AsyncIterator
+import json
 import requests
 import aiohttp
 from ai_automation_framework.llm.base_client import BaseLLMClient
@@ -100,8 +101,13 @@ class OllamaClient(BaseLLMClient):
 
             result = response.json()
 
+            # Safely access response content
+            content = result.get("response", "")
+            if not content:
+                self.logger.warning("Empty response from Ollama API")
+
             return Response(
-                content=result["response"],
+                content=content,
                 role="assistant",
                 model=self.model,
                 metadata={
@@ -113,7 +119,11 @@ class OllamaClient(BaseLLMClient):
             )
 
         except requests.exceptions.RequestException as e:
-            raise RuntimeError(f"Ollama request failed: {e}")
+            self.logger.error(f"Ollama request failed: {e}")
+            raise RuntimeError(f"Ollama request failed: {e}") from e
+        except (KeyError, json.JSONDecodeError) as e:
+            self.logger.error(f"Failed to parse Ollama response: {e}")
+            raise RuntimeError(f"Failed to parse Ollama response: {e}") from e
 
     async def achat(
         self,
@@ -149,21 +159,33 @@ class OllamaClient(BaseLLMClient):
             }
         }
 
-        async with aiohttp.ClientSession() as session:
-            async with session.post(url, json=payload) as response:
-                response.raise_for_status()
-                result = await response.json()
+        try:
+            async with aiohttp.ClientSession() as session:
+                async with session.post(url, json=payload) as response:
+                    response.raise_for_status()
+                    result = await response.json()
 
-                return Response(
-                    content=result["response"],
-                    role="assistant",
-                    model=self.model,
-                    metadata={
-                        "total_duration": result.get("total_duration"),
-                        "prompt_eval_count": result.get("prompt_eval_count"),
-                        "eval_count": result.get("eval_count"),
-                    }
-                )
+                    # Safely access response content
+                    content = result.get("response", "")
+                    if not content:
+                        self.logger.warning("Empty response from Ollama API")
+
+                    return Response(
+                        content=content,
+                        role="assistant",
+                        model=self.model,
+                        metadata={
+                            "total_duration": result.get("total_duration"),
+                            "prompt_eval_count": result.get("prompt_eval_count"),
+                            "eval_count": result.get("eval_count"),
+                        }
+                    )
+        except aiohttp.ClientError as e:
+            self.logger.error(f"Ollama async request failed: {e}")
+            raise RuntimeError(f"Ollama async request failed: {e}") from e
+        except (KeyError, json.JSONDecodeError) as e:
+            self.logger.error(f"Failed to parse Ollama response: {e}")
+            raise RuntimeError(f"Failed to parse Ollama response: {e}") from e
 
     async def stream_chat(
         self,
@@ -205,7 +227,6 @@ class OllamaClient(BaseLLMClient):
 
                 async for line in response.content:
                     if line:
-                        import json
                         try:
                             chunk = json.loads(line)
                             if "response" in chunk:

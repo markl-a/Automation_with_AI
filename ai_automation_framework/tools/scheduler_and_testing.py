@@ -186,7 +186,7 @@ class APITestingTool:
             # Try to parse JSON response
             try:
                 result["response"] = response.json()
-            except:
+            except (ValueError, json.JSONDecodeError):
                 result["response"] = response.text[:500]  # Limit text size
 
             self.test_results.append(result)
@@ -267,7 +267,7 @@ class APITestingTool:
                 elapsed = time.time() - req_start
                 response_times.append(elapsed)
                 return response.status_code
-            except:
+            except (requests.RequestException, Exception):
                 nonlocal errors
                 errors += 1
 

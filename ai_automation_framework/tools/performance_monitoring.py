@@ -500,7 +500,7 @@ class HealthChecker:
         try:
             connection.ping()
             return True
-        except:
+        except (ConnectionError, OSError, Exception):
             return False
 
     @staticmethod
@@ -509,7 +509,7 @@ class HealthChecker:
         try:
             redis_client.ping()
             return True
-        except:
+        except (ConnectionError, OSError, Exception):
             return False
 
     @staticmethod

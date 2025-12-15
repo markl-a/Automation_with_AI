@@ -13,7 +13,7 @@ class AirflowIntegration:
     Airflow is a platform to programmatically author, schedule and monitor workflows.
     """
 
-    def __init__(self, base_url: str = None, username: str = None, password: str = None):
+    def __init__(self, base_url: Optional[str] = None, username: Optional[str] = None, password: Optional[str] = None):
         """
         Initialize Airflow integration.
 
@@ -28,7 +28,7 @@ class AirflowIntegration:
     def trigger_dag(
         self,
         dag_id: str,
-        conf: Dict[str, Any] = None
+        conf: Optional[Dict[str, Any]] = None
     ) -> Dict[str, Any]:
         """
         Trigger an Airflow DAG.

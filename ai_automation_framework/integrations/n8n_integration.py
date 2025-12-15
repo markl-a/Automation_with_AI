@@ -13,7 +13,7 @@ class N8NIntegration:
     This integration allows triggering n8n workflows from the framework.
     """
 
-    def __init__(self, base_url: str = None, api_key: str = None):
+    def __init__(self, base_url: Optional[str] = None, api_key: Optional[str] = None):
         """
         Initialize n8n integration.
 

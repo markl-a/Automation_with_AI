@@ -1,6 +1,7 @@
 """Anthropic Claude client implementation."""
 
 from typing import List, Optional, AsyncIterator
+import anthropic
 from anthropic import Anthropic, AsyncAnthropic
 from ai_automation_framework.llm.base_client import BaseLLMClient
 from ai_automation_framework.core.base import Message, Response
@@ -96,19 +97,36 @@ class AnthropicClient(BaseLLMClient):
         if system_message:
             params["system"] = system_message
 
-        response = self.client.messages.create(**params)
+        try:
+            response = self.client.messages.create(**params)
 
-        return Response(
-            content=response.content[0].text,
-            role="assistant",
-            model=response.model,
-            usage={
-                "prompt_tokens": response.usage.input_tokens,
-                "completion_tokens": response.usage.output_tokens,
-                "total_tokens": response.usage.input_tokens + response.usage.output_tokens,
-            },
-            finish_reason=response.stop_reason,
-        )
+            # Safely access content
+            content = ""
+            if response.content and len(response.content) > 0:
+                content = response.content[0].text
+            else:
+                self.logger.warning("Empty response from Anthropic API")
+
+            return Response(
+                content=content,
+                role="assistant",
+                model=response.model,
+                usage={
+                    "prompt_tokens": response.usage.input_tokens,
+                    "completion_tokens": response.usage.output_tokens,
+                    "total_tokens": response.usage.input_tokens + response.usage.output_tokens,
+                },
+                finish_reason=response.stop_reason,
+            )
+        except anthropic.RateLimitError as e:
+            self.logger.error(f"Anthropic rate limit exceeded: {e}")
+            raise RuntimeError(f"Rate limit exceeded: {e}") from e
+        except anthropic.AuthenticationError as e:
+            self.logger.error(f"Anthropic authentication failed: {e}")
+            raise RuntimeError(f"Authentication failed: {e}") from e
+        except anthropic.APIError as e:
+            self.logger.error(f"Anthropic API error: {e}")
+            raise RuntimeError(f"API error: {e}") from e
 
     async def achat(
         self,
@@ -144,19 +162,36 @@ class AnthropicClient(BaseLLMClient):
         if system_message:
             params["system"] = system_message
 
-        response = await self.async_client.messages.create(**params)
+        try:
+            response = await self.async_client.messages.create(**params)
 
-        return Response(
-            content=response.content[0].text,
-            role="assistant",
-            model=response.model,
-            usage={
-                "prompt_tokens": response.usage.input_tokens,
-                "completion_tokens": response.usage.output_tokens,
-                "total_tokens": response.usage.input_tokens + response.usage.output_tokens,
-            },
-            finish_reason=response.stop_reason,
-        )
+            # Safely access content
+            content = ""
+            if response.content and len(response.content) > 0:
+                content = response.content[0].text
+            else:
+                self.logger.warning("Empty response from Anthropic API")
+
+            return Response(
+                content=content,
+                role="assistant",
+                model=response.model,
+                usage={
+                    "prompt_tokens": response.usage.input_tokens,
+                    "completion_tokens": response.usage.output_tokens,
+                    "total_tokens": response.usage.input_tokens + response.usage.output_tokens,
+                },
+                finish_reason=response.stop_reason,
+            )
+        except anthropic.RateLimitError as e:
+            self.logger.error(f"Anthropic rate limit exceeded: {e}")
+            raise RuntimeError(f"Rate limit exceeded: {e}") from e
+        except anthropic.AuthenticationError as e:
+            self.logger.error(f"Anthropic authentication failed: {e}")
+            raise RuntimeError(f"Authentication failed: {e}") from e
+        except anthropic.APIError as e:
+            self.logger.error(f"Anthropic API error: {e}")
+            raise RuntimeError(f"API error: {e}") from e
 
     async def stream_chat(
         self,
