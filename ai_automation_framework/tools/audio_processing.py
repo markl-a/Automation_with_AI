@@ -10,7 +10,7 @@ from typing import Optional, List
 from pathlib import Path
 
 try:
-    import openai
+    from openai import OpenAI
     HAS_OPENAI = True
 except ImportError:
     HAS_OPENAI = False
@@ -43,10 +43,14 @@ class SpeechToText:
         self.api_key = api_key or os.getenv(f"{provider.upper()}_API_KEY")
 
         if provider == "openai" and HAS_OPENAI:
-            openai.api_key = self.api_key
+            if self.api_key is None:
+                raise ValueError("OpenAI API key is required. Set OPENAI_API_KEY environment variable or pass api_key parameter.")
+            self.client = OpenAI(api_key=self.api_key)
         elif provider == "azure" and HAS_AZURE:
             # Azure Speech 初始化
             speech_key = os.getenv("AZURE_SPEECH_KEY")
+            if speech_key is None:
+                raise ValueError("Azure Speech key is required. Set AZURE_SPEECH_KEY environment variable.")
             service_region = os.getenv("AZURE_SPEECH_REGION", "eastus")
             self.speech_config = speechsdk.SpeechConfig(
                 subscription=speech_key,
@@ -82,13 +86,13 @@ class SpeechToText:
     def _transcribe_openai(self, audio_file: str, language: str, **kwargs) -> str:
         """使用 OpenAI Whisper 轉錄"""
         with open(audio_file, "rb") as f:
-            transcript = openai.Audio.transcribe(
-                "whisper-1",
-                f,
+            transcript = self.client.audio.transcriptions.create(
+                model="whisper-1",
+                file=f,
                 language=language,
                 **kwargs
             )
-        return transcript["text"]
+        return transcript.text
 
     def _transcribe_google(self, audio_file: str, language: str, **kwargs) -> str:
         """使用 Google Cloud Speech-to-Text 轉錄"""
@@ -142,9 +146,13 @@ class TextToSpeech:
         self.api_key = api_key or os.getenv(f"{provider.upper()}_API_KEY")
 
         if provider == "openai" and HAS_OPENAI:
-            openai.api_key = self.api_key
+            if self.api_key is None:
+                raise ValueError("OpenAI API key is required. Set OPENAI_API_KEY environment variable or pass api_key parameter.")
+            self.client = OpenAI(api_key=self.api_key)
         elif provider == "azure" and HAS_AZURE:
             speech_key = os.getenv("AZURE_SPEECH_KEY")
+            if speech_key is None:
+                raise ValueError("Azure Speech key is required. Set AZURE_SPEECH_KEY environment variable.")
             service_region = os.getenv("AZURE_SPEECH_REGION", "eastus")
             self.speech_config = speechsdk.SpeechConfig(
                 subscription=speech_key,
@@ -183,7 +191,7 @@ class TextToSpeech:
 
     def _synthesize_openai(self, text: str, output_file: str, voice: str, **kwargs) -> str:
         """使用 OpenAI TTS"""
-        response = openai.Audio.create(
+        response = self.client.audio.speech.create(
             model="tts-1",
             voice=voice,
             input=text,

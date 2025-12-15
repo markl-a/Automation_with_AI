@@ -13,7 +13,7 @@ class AirflowIntegration:
     Airflow is a platform to programmatically author, schedule and monitor workflows.
     """
 
-    def __init__(self, base_url: str = None, username: str = None, password: str = None):
+    def __init__(self, base_url: Optional[str] = None, username: Optional[str] = None, password: Optional[str] = None):
         """
         Initialize Airflow integration.
 
@@ -24,11 +24,12 @@ class AirflowIntegration:
         """
         self.base_url = base_url
         self.auth = (username, password) if username and password else None
+        self.session = requests.Session()
 
     def trigger_dag(
         self,
         dag_id: str,
-        conf: Dict[str, Any] = None
+        conf: Optional[Dict[str, Any]] = None
     ) -> Dict[str, Any]:
         """
         Trigger an Airflow DAG.
@@ -52,11 +53,12 @@ class AirflowIntegration:
                 "dag_run_id": f"manual_{datetime.now().isoformat()}"
             }
 
-            response = requests.post(
+            response = self.session.post(
                 url,
                 json=payload,
                 auth=self.auth,
-                headers={'Content-Type': 'application/json'}
+                headers={'Content-Type': 'application/json'},
+                timeout=30
             )
             response.raise_for_status()
 
@@ -77,7 +79,7 @@ class AirflowIntegration:
         try:
             url = f"{self.base_url}/api/v1/dags/{dag_id}/dagRuns/{dag_run_id}"
 
-            response = requests.get(url, auth=self.auth)
+            response = self.session.get(url, auth=self.auth, timeout=30)
             response.raise_for_status()
 
             result = response.json()
@@ -98,7 +100,7 @@ class AirflowIntegration:
         try:
             url = f"{self.base_url}/api/v1/dags"
 
-            response = requests.get(url, auth=self.auth)
+            response = self.session.get(url, auth=self.auth, timeout=30)
             response.raise_for_status()
 
             result = response.json()
@@ -134,7 +136,7 @@ class AirflowIntegration:
 
             payload = {"is_paused": is_paused}
 
-            response = requests.patch(
+            response = self.session.patch(
                 url,
                 json=payload,
                 auth=self.auth,
@@ -149,6 +151,20 @@ class AirflowIntegration:
             }
         except Exception as e:
             return {"success": False, "error": str(e)}
+
+    def close(self) -> None:
+        """Close the HTTP session and cleanup resources."""
+        if hasattr(self, 'session'):
+            self.session.close()
+
+    def __enter__(self):
+        """Context manager entry."""
+        return self
+
+    def __exit__(self, exc_type, exc_val, exc_tb):
+        """Context manager exit."""
+        self.close()
+        return False
 
     @staticmethod
     def generate_dag_template(

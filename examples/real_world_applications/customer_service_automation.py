@@ -20,7 +20,7 @@ from ai_automation_framework.llm.openai_client import OpenAIClient
 from ai_automation_framework.agents.tool_agent import ToolAgent
 from ai_automation_framework.rag.embeddings import EmbeddingModel
 from ai_automation_framework.rag.vector_store import VectorStore
-from ai_automation_framework.rag.retriever import RAGRetriever
+from ai_automation_framework.rag.retriever import Retriever
 
 
 class TicketPriority(Enum):
@@ -89,7 +89,7 @@ class CustomerServiceAgent:
         # 初始化 RAG 系統用於常見問題
         self.embedding_model = EmbeddingModel()
         self.vector_store = VectorStore()
-        self.rag_retriever = RAGRetriever(
+        self.rag_retriever = Retriever(
             embedding_model=self.embedding_model,
             vector_store=self.vector_store
         )
@@ -163,7 +163,7 @@ class CustomerServiceAgent:
         只返回一個詞：positive, neutral, negative, 或 very_negative
         """
 
-        response = self.llm_client.generate_text(prompt, max_tokens=10)
+        response = self.llm_client.simple_chat(prompt)
         sentiment_str = response.strip().lower()
 
         sentiment_map = {
@@ -203,7 +203,7 @@ class CustomerServiceAgent:
         只返回類別名稱。
         """
 
-        response = self.llm_client.generate_text(prompt, max_tokens=20)
+        response = self.llm_client.simple_chat(prompt)
         category = response.strip().lower()
 
         if category in self.categories:
@@ -289,7 +289,7 @@ class CustomerServiceAgent:
             請生成一個專業、友好且有幫助的回覆。
             """
 
-            response = self.llm_client.generate_text(prompt, max_tokens=300)
+            response = self.llm_client.simple_chat(prompt)
             return response
 
         return None

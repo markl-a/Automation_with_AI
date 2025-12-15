@@ -2,7 +2,7 @@
 
 from abc import ABC, abstractmethod
 from typing import Dict, Any, Optional
-from pydantic import BaseModel
+from pydantic import BaseModel, ConfigDict
 from ai_automation_framework.core.logger import get_logger
 
 
@@ -62,18 +62,18 @@ class BaseComponent(ABC):
 class Message(BaseModel):
     """Represents a message in a conversation."""
 
-    role: str  # "system", "user", "assistant", "function"
+    model_config = ConfigDict(arbitrary_types_allowed=True)
+
+    role: str  # "system", "user", "assistant", "function", "tool"
     content: str
     name: Optional[str] = None
     function_call: Optional[Dict[str, Any]] = None
 
-    class Config:
-        """Pydantic configuration."""
-        arbitrary_types_allowed = True
-
 
 class Response(BaseModel):
     """Represents a response from an LLM or agent."""
+
+    model_config = ConfigDict(arbitrary_types_allowed=True)
 
     content: str
     role: str = "assistant"
@@ -81,7 +81,4 @@ class Response(BaseModel):
     usage: Optional[Dict[str, int]] = None
     finish_reason: Optional[str] = None
     metadata: Dict[str, Any] = {}
-
-    class Config:
-        """Pydantic configuration."""
-        arbitrary_types_allowed = True
+    tool_calls: Optional[Any] = None  # For function/tool calling support

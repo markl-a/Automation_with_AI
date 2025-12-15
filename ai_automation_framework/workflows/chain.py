@@ -35,7 +35,12 @@ class Chain(BaseComponent):
 
         Returns:
             Self for chaining
+
+        Raises:
+            TypeError: If step is not callable
         """
+        if not callable(step):
+            raise TypeError(f"Step must be callable, got {type(step).__name__}")
         self.steps.append(step)
         return self
 
@@ -48,15 +53,28 @@ class Chain(BaseComponent):
 
         Returns:
             Final output after all steps
+
+        Raises:
+            ValueError: If initial_input is None
+            RuntimeError: If step execution fails
         """
+        if initial_input is None:
+            raise ValueError("initial_input cannot be None")
+
         self.initialize()
 
         current_output = initial_input
         self.logger.info(f"Starting chain execution with {len(self.steps)} steps")
 
         for i, step in enumerate(self.steps, 1):
-            self.logger.debug(f"Executing step {i}/{len(self.steps)}: {step.__name__}")
-            current_output = step(current_output)
+            step_name = getattr(step, '__name__', f'<step_{i}>')
+            self.logger.debug(f"Executing step {i}/{len(self.steps)}: {step_name}")
+            try:
+                current_output = step(current_output)
+            except Exception as e:
+                error_msg = f"Error executing step {i}/{len(self.steps)} ({step_name}): {str(e)}"
+                self.logger.error(error_msg)
+                raise RuntimeError(error_msg) from e
 
         self.logger.info("Chain execution completed")
         return current_output

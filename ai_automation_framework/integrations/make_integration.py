@@ -9,6 +9,7 @@ import os
 import requests
 import hmac
 import hashlib
+import json
 from typing import Dict, Any, List, Optional
 from datetime import datetime
 
@@ -105,7 +106,7 @@ class MakeIntegration:
                 'status_code': response.status_code,
                 'response': response.json() if response.text else None
             }
-        except Exception as e:
+        except requests.exceptions.RequestException as e:
             return {
                 'success': False,
                 'error': str(e)
@@ -373,7 +374,6 @@ class MakeWebhookHandler:
         """
         # 如果啟用了簽名驗證
         if self.webhook_secret and signature and timestamp:
-            import json
             body = json.dumps(request_data)
 
             if not MakeIntegration.verify_webhook_signature(

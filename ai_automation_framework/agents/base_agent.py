@@ -39,8 +39,12 @@ class BaseAgent(BaseComponent):
 
     def _initialize(self) -> None:
         """Initialize the agent."""
-        self.llm.initialize()
-        self.logger.info(f"Initialized agent: {self.name}")
+        try:
+            self.llm.initialize()
+            self.logger.info(f"Initialized agent: {self.name}")
+        except Exception as e:
+            self.logger.error(f"Failed to initialize LLM for agent {self.name}: {e}")
+            raise
 
     def add_message(self, role: str, content: str) -> None:
         """
@@ -50,6 +54,9 @@ class BaseAgent(BaseComponent):
             role: Message role
             content: Message content
         """
+        valid_roles = {"user", "assistant", "system", "tool"}
+        if role not in valid_roles:
+            raise ValueError(f"Invalid role '{role}'. Must be one of: {', '.join(valid_roles)}")
         self.memory.append(Message(role=role, content=content))
 
     def get_memory(self) -> List[Message]:
@@ -90,7 +97,16 @@ class BaseAgent(BaseComponent):
         self.add_message("user", user_message)
 
         # Get response from LLM
-        response = self.llm.chat(self.memory, **kwargs)
+        try:
+            response = self.llm.chat(self.memory, **kwargs)
+        except Exception as e:
+            self.logger.error(f"LLM chat failed: {e}")
+            raise
+
+        # Validate response content
+        if response is None or not hasattr(response, 'content') or response.content is None:
+            self.logger.error("Invalid response from LLM: missing or null content")
+            raise ValueError("LLM returned invalid response")
 
         # Add assistant response to memory
         self.add_message("assistant", response.content)

@@ -10,6 +10,66 @@ import sqlite3
 import json
 from datetime import datetime, timedelta
 import re
+import time
+import threading
+
+
+class RateLimiter:
+    """
+    Rate limiter using token bucket algorithm.
+
+    The token bucket algorithm maintains a bucket with a maximum capacity.
+    Tokens are added at a constant rate (rate per second).
+    Each request consumes one token. If no tokens are available, requests must wait.
+    """
+
+    def __init__(self, rate: float):
+        """
+        Initialize rate limiter.
+
+        Args:
+            rate: Maximum number of requests per second (e.g., 2.0 = 2 requests/sec)
+        """
+        if rate <= 0:
+            raise ValueError("Rate must be positive")
+
+        self.rate = rate  # tokens per second
+        self.capacity = max(1.0, rate)  # maximum tokens
+        self.tokens = self.capacity  # current tokens available
+        self.last_update = time.time()
+        self.lock = threading.Lock()
+
+    def _add_tokens(self):
+        """Add tokens based on elapsed time since last update."""
+        now = time.time()
+        elapsed = now - self.last_update
+
+        # Add tokens based on elapsed time
+        self.tokens = min(self.capacity, self.tokens + elapsed * self.rate)
+        self.last_update = now
+
+    def wait_for_token(self):
+        """
+        Wait until a token is available and consume it.
+
+        This method blocks until rate limit allows the request.
+        """
+        with self.lock:
+            while True:
+                self._add_tokens()
+
+                if self.tokens >= 1.0:
+                    # Consume one token
+                    self.tokens -= 1.0
+                    return
+
+                # Calculate wait time
+                tokens_needed = 1.0 - self.tokens
+                wait_time = tokens_needed / self.rate
+
+                # Release lock while sleeping to allow other threads
+                # to check if tokens are available
+                time.sleep(min(wait_time, 0.1))
 
 
 class EmailAutomationTool:
@@ -134,7 +194,7 @@ class EmailAutomationTool:
             return {"success": False, "error": str(e)}
 
     @staticmethod
-    def _get_email_body(email_message) -> str:
+    def _get_email_body(email_message: email.message.Message) -> str:
         """Extract body from email message."""
         if email_message.is_multipart():
             for part in email_message.walk():
@@ -148,6 +208,9 @@ class EmailAutomationTool:
 class DatabaseAutomationTool:
     """Tool for database automation and SQL query generation."""
 
+    # Valid SQL identifier pattern (alphanumeric and underscore, starting with letter/underscore)
+    _VALID_IDENTIFIER_PATTERN = r'^[a-zA-Z_][a-zA-Z0-9_]*$'
+
     def __init__(self, db_path: str = ":memory:"):
         """
         Initialize database automation tool.
@@ -155,8 +218,28 @@ class DatabaseAutomationTool:
         Args:
             db_path: Path to SQLite database
         """
+        import re
+        self._identifier_regex = re.compile(self._VALID_IDENTIFIER_PATTERN)
         self.db_path = db_path
         self.conn = None
+
+    def _validate_identifier(self, name: str) -> bool:
+        """
+        Validate SQL identifier to prevent SQL injection.
+
+        Args:
+            name: Table or column name to validate
+
+        Returns:
+            True if valid, raises ValueError if invalid
+        """
+        if not name or not self._identifier_regex.match(name):
+            raise ValueError(f"Invalid SQL identifier: {name}")
+        # Also check for SQL reserved words that could be dangerous
+        dangerous_words = {'drop', 'delete', 'truncate', 'insert', 'update', 'exec', 'execute'}
+        if name.lower() in dangerous_words:
+            raise ValueError(f"SQL reserved word not allowed as identifier: {name}")
+        return True
 
     def connect(self) -> Dict[str, Any]:
         """Connect to database."""
@@ -211,7 +294,7 @@ class DatabaseAutomationTool:
         limit: int = None
     ) -> str:
         """
-        Generate SELECT query.
+        Generate SELECT query with SQL injection protection.
 
         Args:
             table: Table name
@@ -222,21 +305,35 @@ class DatabaseAutomationTool:
         Returns:
             Generated SQL query
         """
-        cols = ", ".join(columns) if columns else "*"
+        # Validate table name
+        self._validate_identifier(table)
+
+        # Validate and build column list
+        if columns:
+            for col in columns:
+                self._validate_identifier(col)
+            cols = ", ".join(columns)
+        else:
+            cols = "*"
+
         query = f"SELECT {cols} FROM {table}"
 
         if where:
+            for k in where.keys():
+                self._validate_identifier(k)
             conditions = " AND ".join([f"{k} = ?" for k in where.keys()])
             query += f" WHERE {conditions}"
 
         if limit:
+            if not isinstance(limit, int) or limit < 0:
+                raise ValueError("LIMIT must be a non-negative integer")
             query += f" LIMIT {limit}"
 
         return query
 
     def generate_insert_query(self, table: str, data: Dict[str, Any]) -> tuple:
         """
-        Generate INSERT query.
+        Generate INSERT query with SQL injection protection.
 
         Args:
             table: Table name
@@ -245,6 +342,13 @@ class DatabaseAutomationTool:
         Returns:
             Tuple of (query, values)
         """
+        # Validate table name
+        self._validate_identifier(table)
+
+        # Validate column names
+        for col in data.keys():
+            self._validate_identifier(col)
+
         columns = ", ".join(data.keys())
         placeholders = ", ".join(["?" for _ in data])
         query = f"INSERT INTO {table} ({columns}) VALUES ({placeholders})"
@@ -252,7 +356,7 @@ class DatabaseAutomationTool:
 
     def create_table(self, table: str, schema: Dict[str, str]) -> Dict[str, Any]:
         """
-        Create a table.
+        Create a table with SQL injection protection.
 
         Args:
             table: Table name
@@ -261,6 +365,21 @@ class DatabaseAutomationTool:
         Returns:
             Result dictionary
         """
+        # Validate table name
+        self._validate_identifier(table)
+
+        # Validate column names and types
+        allowed_types = {'INTEGER', 'TEXT', 'REAL', 'BLOB', 'NULL', 'VARCHAR', 'CHAR', 'BOOLEAN', 'DATE', 'DATETIME', 'PRIMARY KEY', 'NOT NULL', 'UNIQUE', 'AUTOINCREMENT'}
+        for name, dtype in schema.items():
+            self._validate_identifier(name)
+            # Check that type only contains allowed keywords
+            type_parts = dtype.upper().split()
+            for part in type_parts:
+                # Remove any parentheses content like VARCHAR(255)
+                clean_part = part.split('(')[0]
+                if clean_part and clean_part not in allowed_types:
+                    raise ValueError(f"Invalid SQL type: {dtype}")
+
         columns_def = ", ".join([f"{name} {dtype}" for name, dtype in schema.items()])
         query = f"CREATE TABLE IF NOT EXISTS {table} ({columns_def})"
         return self.execute_query(query)
@@ -274,8 +393,17 @@ class DatabaseAutomationTool:
 class WebScraperTool:
     """Tool for web scraping and data extraction."""
 
-    @staticmethod
-    def fetch_url(url: str, timeout: int = 30) -> Dict[str, Any]:
+    def __init__(self, rate_limit: Optional[float] = None):
+        """
+        Initialize web scraper tool.
+
+        Args:
+            rate_limit: Maximum requests per second (e.g., 2.0 = 2 requests/sec).
+                       If None, no rate limiting is applied.
+        """
+        self.rate_limiter = RateLimiter(rate_limit) if rate_limit else None
+
+    def fetch_url(self, url: str, timeout: int = 30) -> Dict[str, Any]:
         """
         Fetch content from URL.
 
@@ -286,7 +414,19 @@ class WebScraperTool:
         Returns:
             Response data
         """
+        # Apply rate limiting if configured
+        if self.rate_limiter:
+            self.rate_limiter.wait_for_token()
+
         try:
+            # Validate URL
+            if not url or not isinstance(url, str):
+                raise ValueError("URL must be a non-empty string")
+
+            # Basic URL validation
+            if not url.startswith(('http://', 'https://')):
+                raise ValueError("URL must start with http:// or https://")
+
             import requests
             response = requests.get(url, timeout=timeout)
             response.raise_for_status()
@@ -298,11 +438,14 @@ class WebScraperTool:
                 "headers": dict(response.headers),
                 "url": url
             }
+        except ValueError as e:
+            return {"success": False, "error": f"Validation error: {str(e)}"}
+        except requests.exceptions.RequestException as e:
+            return {"success": False, "error": f"Request error: {str(e)}"}
         except Exception as e:
             return {"success": False, "error": str(e)}
 
-    @staticmethod
-    def extract_links(html_content: str, base_url: str = None) -> Dict[str, Any]:
+    def extract_links(self, html_content: str, base_url: str = None) -> Dict[str, Any]:
         """
         Extract all links from HTML.
 
@@ -313,7 +456,22 @@ class WebScraperTool:
         Returns:
             Extracted links
         """
+        # Apply rate limiting if configured
+        if self.rate_limiter:
+            self.rate_limiter.wait_for_token()
+
         try:
+            # Validate html_content
+            if not html_content or not isinstance(html_content, str):
+                raise ValueError("html_content must be a non-empty string")
+
+            # Validate base_url if provided
+            if base_url is not None:
+                if not isinstance(base_url, str) or not base_url:
+                    raise ValueError("base_url must be a non-empty string if provided")
+                if not base_url.startswith(('http://', 'https://')):
+                    raise ValueError("base_url must start with http:// or https://")
+
             from bs4 import BeautifulSoup
             from urllib.parse import urljoin
 
@@ -334,11 +492,12 @@ class WebScraperTool:
                 "count": len(links),
                 "links": links
             }
+        except ValueError as e:
+            return {"success": False, "error": f"Validation error: {str(e)}"}
         except Exception as e:
             return {"success": False, "error": str(e)}
 
-    @staticmethod
-    def extract_text(html_content: str, tag: str = None) -> Dict[str, Any]:
+    def extract_text(self, html_content: str, tag: str = None) -> Dict[str, Any]:
         """
         Extract text from HTML.
 
@@ -349,7 +508,15 @@ class WebScraperTool:
         Returns:
             Extracted text
         """
+        # Apply rate limiting if configured
+        if self.rate_limiter:
+            self.rate_limiter.wait_for_token()
+
         try:
+            # Validate html_content
+            if not html_content or not isinstance(html_content, str):
+                raise ValueError("html_content must be a non-empty string")
+
             from bs4 import BeautifulSoup
 
             soup = BeautifulSoup(html_content, 'html.parser')
@@ -364,11 +531,12 @@ class WebScraperTool:
                 "success": True,
                 "text": text
             }
+        except ValueError as e:
+            return {"success": False, "error": f"Validation error: {str(e)}"}
         except Exception as e:
             return {"success": False, "error": str(e)}
 
-    @staticmethod
-    def extract_table_data(html_content: str) -> Dict[str, Any]:
+    def extract_table_data(self, html_content: str) -> Dict[str, Any]:
         """
         Extract table data from HTML.
 
@@ -379,6 +547,10 @@ class WebScraperTool:
             Extracted table data
         """
         try:
+            # Validate html_content
+            if not html_content or not isinstance(html_content, str):
+                raise ValueError("html_content must be a non-empty string")
+
             from bs4 import BeautifulSoup
 
             soup = BeautifulSoup(html_content, 'html.parser')
@@ -397,6 +569,8 @@ class WebScraperTool:
                 "table_count": len(tables),
                 "tables": tables
             }
+        except ValueError as e:
+            return {"success": False, "error": f"Validation error: {str(e)}"}
         except Exception as e:
             return {"success": False, "error": str(e)}
 

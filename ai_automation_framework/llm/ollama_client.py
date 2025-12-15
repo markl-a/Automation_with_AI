@@ -1,6 +1,10 @@
 """Ollama client for local LLM inference."""
 
 from typing import List, Optional, AsyncIterator
+import json
+import time
+import random
+import asyncio
 import requests
 import aiohttp
 from ai_automation_framework.llm.base_client import BaseLLMClient
@@ -18,6 +22,8 @@ class OllamaClient(BaseLLMClient):
         self,
         model: str = "llama2",
         base_url: str = "http://localhost:11434",
+        max_retries: int = 3,
+        base_delay: float = 1.0,
         **kwargs
     ):
         """
@@ -26,6 +32,8 @@ class OllamaClient(BaseLLMClient):
         Args:
             model: Model name (e.g., llama2, mistral, codellama)
             base_url: Ollama server URL
+            max_retries: Maximum number of retry attempts (default: 3)
+            base_delay: Base delay in seconds for exponential backoff (default: 1.0)
             **kwargs: Additional configuration
         """
         super().__init__(
@@ -36,6 +44,8 @@ class OllamaClient(BaseLLMClient):
         )
 
         self.base_url = base_url.rstrip("/")
+        self.max_retries = max_retries
+        self.base_delay = base_delay
 
     def _messages_to_ollama_format(self, messages: List[Message]) -> str:
         """
@@ -55,6 +65,40 @@ class OllamaClient(BaseLLMClient):
 
         prompt_parts.append("Assistant:")
         return "\n".join(prompt_parts)
+
+    def _is_retryable_error(self, error: Exception) -> bool:
+        """Check if an error is retryable."""
+        if isinstance(error, requests.exceptions.RequestException):
+            # Retry on connection errors, timeouts, and server errors
+            if isinstance(error, (requests.exceptions.ConnectionError,
+                                requests.exceptions.Timeout)):
+                return True
+            # Check for rate limit or server error status codes
+            if hasattr(error, 'response') and error.response is not None:
+                status_code = error.response.status_code
+                # Retry on 429 (rate limit) and 5xx (server errors)
+                return status_code == 429 or status_code >= 500
+        return False
+
+    def _is_retryable_async_error(self, error: Exception) -> bool:
+        """Check if an async error is retryable."""
+        if isinstance(error, aiohttp.ClientError):
+            # Retry on connection errors and timeouts
+            if isinstance(error, (aiohttp.ClientConnectionError,
+                                aiohttp.ClientConnectorError,
+                                aiohttp.ServerTimeoutError)):
+                return True
+            # For ClientResponseError, check status code
+            if isinstance(error, aiohttp.ClientResponseError):
+                return error.status == 429 or error.status >= 500
+        return False
+
+    def _calculate_backoff_delay(self, attempt: int) -> float:
+        """Calculate delay with exponential backoff and jitter."""
+        delay = self.base_delay * (2 ** attempt)
+        # Add jitter to prevent thundering herd
+        jitter = random.uniform(0, delay * 0.1)
+        return delay + jitter
 
     def chat(
         self,
@@ -93,27 +137,53 @@ class OllamaClient(BaseLLMClient):
             }
         }
 
-        try:
-            # Make request
-            response = requests.post(url, json=payload)
-            response.raise_for_status()
+        last_error = None
 
-            result = response.json()
+        for attempt in range(self.max_retries + 1):
+            try:
+                # Make request
+                response = requests.post(url, json=payload)
+                response.raise_for_status()
 
-            return Response(
-                content=result["response"],
-                role="assistant",
-                model=self.model,
-                metadata={
-                    "total_duration": result.get("total_duration"),
-                    "load_duration": result.get("load_duration"),
-                    "prompt_eval_count": result.get("prompt_eval_count"),
-                    "eval_count": result.get("eval_count"),
-                }
-            )
+                result = response.json()
 
-        except requests.exceptions.RequestException as e:
-            raise RuntimeError(f"Ollama request failed: {e}")
+                # Safely access response content
+                content = result.get("response", "")
+                if not content:
+                    self.logger.warning("Empty response from Ollama API")
+
+                return Response(
+                    content=content,
+                    role="assistant",
+                    model=self.model,
+                    metadata={
+                        "total_duration": result.get("total_duration"),
+                        "load_duration": result.get("load_duration"),
+                        "prompt_eval_count": result.get("prompt_eval_count"),
+                        "eval_count": result.get("eval_count"),
+                    }
+                )
+
+            except requests.exceptions.RequestException as e:
+                last_error = e
+                if attempt < self.max_retries and self._is_retryable_error(e):
+                    delay = self._calculate_backoff_delay(attempt)
+                    self.logger.warning(
+                        f"Ollama request error (attempt {attempt + 1}/{self.max_retries + 1}): {e}. "
+                        f"Retrying in {delay:.2f}s..."
+                    )
+                    time.sleep(delay)
+                else:
+                    self.logger.error(f"Ollama request failed: {e}")
+                    raise RuntimeError(f"Ollama request failed: {e}") from e
+            except (KeyError, json.JSONDecodeError) as e:
+                self.logger.error(f"Failed to parse Ollama response: {e}")
+                raise RuntimeError(f"Failed to parse Ollama response: {e}") from e
+
+        # If we exhausted all retries
+        if last_error:
+            self.logger.error(f"Ollama request failed after {self.max_retries + 1} attempts: {last_error}")
+            raise RuntimeError(f"Ollama request failed after {self.max_retries + 1} attempts: {last_error}") from last_error
 
     async def achat(
         self,
@@ -149,21 +219,50 @@ class OllamaClient(BaseLLMClient):
             }
         }
 
-        async with aiohttp.ClientSession() as session:
-            async with session.post(url, json=payload) as response:
-                response.raise_for_status()
-                result = await response.json()
+        last_error = None
 
-                return Response(
-                    content=result["response"],
-                    role="assistant",
-                    model=self.model,
-                    metadata={
-                        "total_duration": result.get("total_duration"),
-                        "prompt_eval_count": result.get("prompt_eval_count"),
-                        "eval_count": result.get("eval_count"),
-                    }
-                )
+        for attempt in range(self.max_retries + 1):
+            try:
+                async with aiohttp.ClientSession() as session:
+                    async with session.post(url, json=payload) as response:
+                        response.raise_for_status()
+                        result = await response.json()
+
+                        # Safely access response content
+                        content = result.get("response", "")
+                        if not content:
+                            self.logger.warning("Empty response from Ollama API")
+
+                        return Response(
+                            content=content,
+                            role="assistant",
+                            model=self.model,
+                            metadata={
+                                "total_duration": result.get("total_duration"),
+                                "prompt_eval_count": result.get("prompt_eval_count"),
+                                "eval_count": result.get("eval_count"),
+                            }
+                        )
+            except aiohttp.ClientError as e:
+                last_error = e
+                if attempt < self.max_retries and self._is_retryable_async_error(e):
+                    delay = self._calculate_backoff_delay(attempt)
+                    self.logger.warning(
+                        f"Ollama async request error (attempt {attempt + 1}/{self.max_retries + 1}): {e}. "
+                        f"Retrying in {delay:.2f}s..."
+                    )
+                    await asyncio.sleep(delay)
+                else:
+                    self.logger.error(f"Ollama async request failed: {e}")
+                    raise RuntimeError(f"Ollama async request failed: {e}") from e
+            except (KeyError, json.JSONDecodeError) as e:
+                self.logger.error(f"Failed to parse Ollama response: {e}")
+                raise RuntimeError(f"Failed to parse Ollama response: {e}") from e
+
+        # If we exhausted all retries
+        if last_error:
+            self.logger.error(f"Ollama async request failed after {self.max_retries + 1} attempts: {last_error}")
+            raise RuntimeError(f"Ollama async request failed after {self.max_retries + 1} attempts: {last_error}") from last_error
 
     async def stream_chat(
         self,
@@ -199,19 +298,22 @@ class OllamaClient(BaseLLMClient):
             }
         }
 
-        async with aiohttp.ClientSession() as session:
-            async with session.post(url, json=payload) as response:
-                response.raise_for_status()
+        try:
+            async with aiohttp.ClientSession() as session:
+                async with session.post(url, json=payload) as response:
+                    response.raise_for_status()
 
-                async for line in response.content:
-                    if line:
-                        import json
-                        try:
-                            chunk = json.loads(line)
-                            if "response" in chunk:
-                                yield chunk["response"]
-                        except json.JSONDecodeError:
-                            continue
+                    async for line in response.content:
+                        if line:
+                            try:
+                                chunk = json.loads(line)
+                                if "response" in chunk:
+                                    yield chunk["response"]
+                            except json.JSONDecodeError:
+                                continue
+        except aiohttp.ClientError as e:
+            self.logger.error(f"Ollama stream request failed: {e}")
+            raise RuntimeError(f"Ollama stream request failed: {e}") from e
 
     def list_models(self) -> List[str]:
         """

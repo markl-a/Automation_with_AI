@@ -6,17 +6,19 @@ Celery Distributed Task Queue Integration
 """
 
 import os
-from typing import Dict, Any, List, Optional, Callable
+from typing import Dict, Any, List, Optional, Callable, Union
 from datetime import datetime, timedelta
 
 try:
     from celery import Celery, Task, group, chain, chord
     from celery.result import AsyncResult, GroupResult
-    from celery.schedules import crontab
+    from celery.schedules import crontab, schedule
     HAS_CELERY = True
 except ImportError:
     HAS_CELERY = False
     Celery = None
+    crontab = None
+    schedule = None
 
 
 class CeleryIntegration:
@@ -129,6 +131,11 @@ class CeleryIntegration:
                 'task_name': task_name,
                 'state': result.state
             }
+        except ConnectionError as e:
+            return {
+                'success': False,
+                'error': f'Failed to connect to broker: {str(e)}'
+            }
         except Exception as e:
             return {
                 'success': False,
@@ -166,6 +173,12 @@ class CeleryIntegration:
                 'ready': result.ready(),
                 'successful': result.successful() if result.ready() else None,
                 'failed': result.failed() if result.ready() else None
+            }
+        except TimeoutError as e:
+            return {
+                'success': False,
+                'error': f'Task timed out after {timeout} seconds: {str(e)}',
+                'task_id': task_id
             }
         except Exception as e:
             return {
@@ -301,7 +314,7 @@ class CeleryIntegration:
 
     def add_periodic_task(
         self,
-        schedule: Any,
+        schedule: Union[timedelta, 'crontab', float],
         task_name: str,
         args: Optional[List] = None,
         kwargs: Optional[Dict] = None,
@@ -311,7 +324,7 @@ class CeleryIntegration:
         添加週期性任務
 
         Args:
-            schedule: 調度（crontab 或 timedelta）
+            schedule: 調度（crontab、timedelta 或秒數）
             task_name: 任務名稱
             args: 參數
             kwargs: 關鍵字參數

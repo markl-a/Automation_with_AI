@@ -23,19 +23,23 @@ def demo_api_testing():
     print("-" * 60)
 
     # Test a public API
-    result = tester.test_endpoint(
-        url="https://jsonplaceholder.typicode.com/posts/1",
-        method="GET",
-        expected_status=200
-    )
+    try:
+        result = tester.test_endpoint(
+            url="https://jsonplaceholder.typicode.com/posts/1",
+            method="GET",
+            expected_status=200
+        )
 
-    print(f"✓ Test URL: {result['url']}")
-    print(f"✓ Method: {result['method']}")
-    print(f"✓ Status Code: {result['status_code']} (Expected: {result['expected_status']})")
-    print(f"✓ Response Time: {result['response_time']}s")
-    print(f"✓ Test Passed: {result['success']}")
-    print(f"\nResponse Preview:")
-    print(f"  {str(result['response'])[:200]}...")
+        print(f"✓ Test URL: {result['url']}")
+        print(f"✓ Method: {result['method']}")
+        print(f"✓ Status Code: {result['status_code']} (Expected: {result['expected_status']})")
+        print(f"✓ Response Time: {result['response_time']}s")
+        print(f"✓ Test Passed: {result['success']}")
+        print(f"\nResponse Preview:")
+        print(f"  {str(result['response'])[:200]}...")
+    except Exception as e:
+        print(f"Error testing endpoint: {e}")
+        print("Continuing with demo...")
 
     print("\n2. TESTING MULTIPLE ENDPOINTS")
     print("-" * 60)
@@ -58,38 +62,46 @@ def demo_api_testing():
         },
     ]
 
-    results = tester.test_multiple_endpoints(endpoints)
+    try:
+        results = tester.test_multiple_endpoints(endpoints)
 
-    print(f"✓ Total Tests: {results['total_tests']}")
-    print(f"✓ Passed: {results['passed']}")
-    print(f"✓ Failed: {results['failed']}")
-    print(f"✓ Pass Rate: {results['pass_rate']}%")
+        print(f"✓ Total Tests: {results['total_tests']}")
+        print(f"✓ Passed: {results['passed']}")
+        print(f"✓ Failed: {results['failed']}")
+        print(f"✓ Pass Rate: {results['pass_rate']}%")
 
-    print("\nDetailed Results:")
-    for i, test in enumerate(results['results'], 1):
-        status = "✓ PASS" if test['success'] else "✗ FAIL"
-        print(f"  {i}. {test['url']} - {status} ({test['response_time']}s)")
+        print("\nDetailed Results:")
+        for i, test in enumerate(results['results'], 1):
+            status = "✓ PASS" if test['success'] else "✗ FAIL"
+            print(f"  {i}. {test['url']} - {status} ({test['response_time']}s)")
+    except Exception as e:
+        print(f"Error testing multiple endpoints: {e}")
+        print("Continuing with demo...")
 
     print("\n3. LOAD TESTING")
     print("-" * 60)
     print("Running load test with 50 requests...")
 
-    load_result = tester.load_test(
-        url="https://jsonplaceholder.typicode.com/posts/1",
-        method="GET",
-        num_requests=50,
-        concurrent=False  # Sequential for demo
-    )
+    try:
+        load_result = tester.load_test(
+            url="https://jsonplaceholder.typicode.com/posts/1",
+            method="GET",
+            num_requests=50,
+            concurrent=False  # Sequential for demo
+        )
 
-    print(f"\n✓ Total Requests: {load_result['total_requests']}")
-    print(f"✓ Successful: {load_result['total_requests'] - load_result['errors']}")
-    print(f"✓ Errors: {load_result['errors']}")
-    print(f"✓ Success Rate: {load_result['success_rate']}%")
-    print(f"✓ Total Time: {load_result['total_time']}s")
-    print(f"✓ Avg Response Time: {load_result['avg_response_time']}s")
-    print(f"✓ Min Response Time: {load_result['min_response_time']}s")
-    print(f"✓ Max Response Time: {load_result['max_response_time']}s")
-    print(f"✓ Requests/Second: {load_result['requests_per_second']}")
+        print(f"\n✓ Total Requests: {load_result['total_requests']}")
+        print(f"✓ Successful: {load_result['total_requests'] - load_result['errors']}")
+        print(f"✓ Errors: {load_result['errors']}")
+        print(f"✓ Success Rate: {load_result['success_rate']}%")
+        print(f"✓ Total Time: {load_result['total_time']}s")
+        print(f"✓ Avg Response Time: {load_result['avg_response_time']}s")
+        print(f"✓ Min Response Time: {load_result['min_response_time']}s")
+        print(f"✓ Max Response Time: {load_result['max_response_time']}s")
+        print(f"✓ Requests/Second: {load_result['requests_per_second']}")
+    except Exception as e:
+        print(f"Error during load testing: {e}")
+        print("Continuing with demo...")
 
     print("\n4. RESPONSE SCHEMA VALIDATION")
     print("-" * 60)

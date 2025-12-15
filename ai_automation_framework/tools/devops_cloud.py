@@ -27,7 +27,8 @@ class GitAutomationTool:
                 cwd=self.repo_path,
                 capture_output=True,
                 text=True,
-                check=True
+                check=True,
+                timeout=30  # 30 second timeout for git operations
             )
             return {
                 "success": True,
@@ -38,6 +39,11 @@ class GitAutomationTool:
             return {
                 "success": False,
                 "error": e.stderr.strip() or str(e)
+            }
+        except subprocess.TimeoutExpired as e:
+            return {
+                "success": False,
+                "error": f"Git command timed out after 30 seconds: {' '.join(args)}"
             }
 
     def clone(self, url: str, destination: str = None) -> Dict[str, Any]:
@@ -105,6 +111,49 @@ class CloudStorageTool:
         self.provider = provider
         self.credentials = credentials
 
+    def _validate_s3_credentials(self) -> Dict[str, Any]:
+        """Validate S3 credentials before use."""
+        required_keys = {'aws_access_key_id', 'aws_secret_access_key'}
+        provided_keys = set(self.credentials.keys())
+
+        # Allow region_name as optional
+        valid_keys = required_keys | {'region_name', 'endpoint_url'}
+
+        missing_keys = required_keys - provided_keys
+        if missing_keys:
+            return {
+                "success": False,
+                "error": f"Missing required S3 credentials: {', '.join(missing_keys)}"
+            }
+
+        invalid_keys = provided_keys - valid_keys
+        if invalid_keys:
+            return {
+                "success": False,
+                "error": f"Invalid S3 credential keys: {', '.join(invalid_keys)}"
+            }
+
+        # Check for empty values
+        for key in required_keys:
+            if not self.credentials.get(key):
+                return {
+                    "success": False,
+                    "error": f"S3 credential '{key}' cannot be empty"
+                }
+
+        return {"success": True}
+
+    def _validate_gcs_credentials(self) -> Dict[str, Any]:
+        """Validate GCS credentials before use."""
+        # GCS uses application default credentials or service account file
+        # Check if GOOGLE_APPLICATION_CREDENTIALS env var is set
+        if 'credentials' not in self.credentials and not os.getenv('GOOGLE_APPLICATION_CREDENTIALS'):
+            return {
+                "success": False,
+                "error": "GCS requires 'credentials' parameter or GOOGLE_APPLICATION_CREDENTIALS environment variable"
+            }
+        return {"success": True}
+
     def upload_file_s3(
         self,
         file_path: str,
@@ -122,8 +171,18 @@ class CloudStorageTool:
         Returns:
             Upload result
         """
+        # Validate credentials first
+        validation = self._validate_s3_credentials()
+        if not validation["success"]:
+            return validation
+
         try:
             import boto3
+            from botocore.exceptions import ClientError, NoCredentialsError
+
+            # Validate file exists
+            if not Path(file_path).exists():
+                return {"success": False, "error": f"File not found: {file_path}"}
 
             object_name = object_name or Path(file_path).name
 
@@ -136,8 +195,12 @@ class CloudStorageTool:
                 "object": object_name,
                 "provider": "s3"
             }
+        except NoCredentialsError:
+            return {"success": False, "error": "AWS credentials not found or invalid"}
+        except ClientError as e:
+            return {"success": False, "error": f"AWS S3 error: {e.response['Error']['Message']}"}
         except Exception as e:
-            return {"success": False, "error": str(e)}
+            return {"success": False, "error": f"Upload failed: {str(e)}"}
 
     def download_file_s3(
         self,
@@ -146,8 +209,18 @@ class CloudStorageTool:
         file_path: str
     ) -> Dict[str, Any]:
         """Download file from AWS S3."""
+        # Validate credentials first
+        validation = self._validate_s3_credentials()
+        if not validation["success"]:
+            return validation
+
         try:
             import boto3
+            from botocore.exceptions import ClientError, NoCredentialsError
+
+            # Ensure output directory exists
+            output_dir = Path(file_path).parent
+            output_dir.mkdir(parents=True, exist_ok=True)
 
             s3_client = boto3.client('s3', **self.credentials)
             s3_client.download_file(bucket, object_name, file_path)
@@ -158,13 +231,26 @@ class CloudStorageTool:
                 "object": object_name,
                 "local_path": file_path
             }
+        except NoCredentialsError:
+            return {"success": False, "error": "AWS credentials not found or invalid"}
+        except ClientError as e:
+            error_code = e.response['Error']['Code']
+            if error_code == '404':
+                return {"success": False, "error": f"Object not found: {object_name}"}
+            return {"success": False, "error": f"AWS S3 error: {e.response['Error']['Message']}"}
         except Exception as e:
-            return {"success": False, "error": str(e)}
+            return {"success": False, "error": f"Download failed: {str(e)}"}
 
     def list_objects_s3(self, bucket: str, prefix: str = "") -> Dict[str, Any]:
         """List objects in S3 bucket."""
+        # Validate credentials first
+        validation = self._validate_s3_credentials()
+        if not validation["success"]:
+            return validation
+
         try:
             import boto3
+            from botocore.exceptions import ClientError, NoCredentialsError
 
             s3_client = boto3.client('s3', **self.credentials)
             response = s3_client.list_objects_v2(Bucket=bucket, Prefix=prefix)
@@ -184,8 +270,15 @@ class CloudStorageTool:
                 "count": len(objects),
                 "objects": objects
             }
+        except NoCredentialsError:
+            return {"success": False, "error": "AWS credentials not found or invalid"}
+        except ClientError as e:
+            error_code = e.response['Error']['Code']
+            if error_code == 'NoSuchBucket':
+                return {"success": False, "error": f"Bucket not found: {bucket}"}
+            return {"success": False, "error": f"AWS S3 error: {e.response['Error']['Message']}"}
         except Exception as e:
-            return {"success": False, "error": str(e)}
+            return {"success": False, "error": f"List operation failed: {str(e)}"}
 
     def upload_file_gcs(
         self,
@@ -194,12 +287,27 @@ class CloudStorageTool:
         object_name: str = None
     ) -> Dict[str, Any]:
         """Upload file to Google Cloud Storage."""
+        # Validate credentials first
+        validation = self._validate_gcs_credentials()
+        if not validation["success"]:
+            return validation
+
         try:
             from google.cloud import storage
+            from google.api_core.exceptions import GoogleAPIError, NotFound
+
+            # Validate file exists
+            if not Path(file_path).exists():
+                return {"success": False, "error": f"File not found: {file_path}"}
 
             object_name = object_name or Path(file_path).name
 
-            client = storage.Client()
+            # Use credentials if provided, otherwise use default
+            if 'credentials' in self.credentials:
+                client = storage.Client(credentials=self.credentials['credentials'])
+            else:
+                client = storage.Client()
+
             bucket_obj = client.bucket(bucket)
             blob = bucket_obj.blob(object_name)
 
@@ -211,8 +319,12 @@ class CloudStorageTool:
                 "object": object_name,
                 "provider": "gcs"
             }
+        except NotFound:
+            return {"success": False, "error": f"GCS bucket not found: {bucket}"}
+        except GoogleAPIError as e:
+            return {"success": False, "error": f"GCS API error: {str(e)}"}
         except Exception as e:
-            return {"success": False, "error": str(e)}
+            return {"success": False, "error": f"Upload failed: {str(e)}"}
 
 
 class BrowserAutomationTool:
@@ -267,10 +379,12 @@ class BrowserAutomationTool:
     def get_page_text(self) -> Dict[str, Any]:
         """Get all text from current page."""
         try:
+            from selenium.webdriver.common.by import By
+
             if not self.driver:
                 return {"success": False, "error": "Driver not started"}
 
-            text = self.driver.find_element("tag name", "body").text
+            text = self.driver.find_element(By.TAG_NAME, "body").text
 
             return {
                 "success": True,
@@ -354,21 +468,28 @@ class PDFAdvancedTool:
         try:
             from PyPDF2 import PdfMerger
 
-            merger = PdfMerger()
-
+            # Validate input files exist
             for pdf in input_pdfs:
-                merger.append(pdf)
+                if not Path(pdf).exists():
+                    return {"success": False, "error": f"Input file not found: {pdf}"}
 
-            merger.write(output_pdf)
-            merger.close()
+            # Use context manager for proper resource handling
+            with PdfMerger() as merger:
+                for pdf in input_pdfs:
+                    merger.append(pdf)
+
+                with open(output_pdf, 'wb') as f:
+                    merger.write(f)
 
             return {
                 "success": True,
                 "input_files": len(input_pdfs),
                 "output": output_pdf
             }
+        except FileNotFoundError as e:
+            return {"success": False, "error": f"File not found: {str(e)}"}
         except Exception as e:
-            return {"success": False, "error": str(e)}
+            return {"success": False, "error": f"PDF merge failed: {str(e)}"}
 
     @staticmethod
     def split_pdf(input_pdf: str, output_dir: str) -> Dict[str, Any]:
@@ -376,28 +497,38 @@ class PDFAdvancedTool:
         try:
             from PyPDF2 import PdfReader, PdfWriter
 
-            reader = PdfReader(input_pdf)
-            output_files = []
+            # Validate input file exists
+            if not Path(input_pdf).exists():
+                return {"success": False, "error": f"Input file not found: {input_pdf}"}
 
-            Path(output_dir).mkdir(parents=True, exist_ok=True)
+            # Use context manager for reading PDF
+            with open(input_pdf, 'rb') as f:
+                reader = PdfReader(f)
+                output_files = []
 
-            for i, page in enumerate(reader.pages):
-                writer = PdfWriter()
-                writer.add_page(page)
+                Path(output_dir).mkdir(parents=True, exist_ok=True)
 
-                output_file = Path(output_dir) / f"page_{i+1}.pdf"
-                with open(output_file, 'wb') as f:
-                    writer.write(f)
+                for i, page in enumerate(reader.pages):
+                    writer = PdfWriter()
+                    writer.add_page(page)
 
-                output_files.append(str(output_file))
+                    output_file = Path(output_dir) / f"page_{i+1}.pdf"
+                    with open(output_file, 'wb') as out_f:
+                        writer.write(out_f)
+
+                    output_files.append(str(output_file))
+
+                total_pages = len(reader.pages)
 
             return {
                 "success": True,
-                "total_pages": len(reader.pages),
+                "total_pages": total_pages,
                 "output_files": output_files
             }
+        except FileNotFoundError as e:
+            return {"success": False, "error": f"File not found: {str(e)}"}
         except Exception as e:
-            return {"success": False, "error": str(e)}
+            return {"success": False, "error": f"PDF split failed: {str(e)}"}
 
     @staticmethod
     def extract_pdf_text(pdf_path: str) -> Dict[str, Any]:
@@ -405,20 +536,30 @@ class PDFAdvancedTool:
         try:
             from PyPDF2 import PdfReader
 
-            reader = PdfReader(pdf_path)
-            text = ""
+            # Validate input file exists
+            if not Path(pdf_path).exists():
+                return {"success": False, "error": f"File not found: {pdf_path}"}
 
-            for page in reader.pages:
-                text += page.extract_text() + "\n"
+            # Use context manager for reading PDF
+            with open(pdf_path, 'rb') as f:
+                reader = PdfReader(f)
+                text = ""
+
+                for page in reader.pages:
+                    text += page.extract_text() + "\n"
+
+                num_pages = len(reader.pages)
 
             return {
                 "success": True,
-                "pages": len(reader.pages),
+                "pages": num_pages,
                 "text": text.strip(),
                 "char_count": len(text)
             }
+        except FileNotFoundError as e:
+            return {"success": False, "error": f"File not found: {str(e)}"}
         except Exception as e:
-            return {"success": False, "error": str(e)}
+            return {"success": False, "error": f"PDF text extraction failed: {str(e)}"}
 
     @staticmethod
     def create_pdf_from_text(text: str, output_path: str) -> Dict[str, Any]:
@@ -426,6 +567,10 @@ class PDFAdvancedTool:
         try:
             from reportlab.lib.pagesizes import letter
             from reportlab.pdfgen import canvas
+
+            # Ensure output directory exists
+            output_dir = Path(output_path).parent
+            output_dir.mkdir(parents=True, exist_ok=True)
 
             c = canvas.Canvas(output_path, pagesize=letter)
             width, height = letter
@@ -445,7 +590,7 @@ class PDFAdvancedTool:
                 "output": output_path
             }
         except Exception as e:
-            return {"success": False, "error": str(e)}
+            return {"success": False, "error": f"PDF creation failed: {str(e)}"}
 
 
 # Tool schemas

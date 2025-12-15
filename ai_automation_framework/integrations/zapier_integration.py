@@ -12,7 +12,7 @@ class ZapierIntegration:
     This allows you to trigger Zapier zaps from your automation framework.
     """
 
-    def __init__(self, webhook_url: str = None):
+    def __init__(self, webhook_url: Optional[str] = None):
         """
         Initialize Zapier integration.
 
@@ -20,11 +20,12 @@ class ZapierIntegration:
             webhook_url: Zapier webhook URL
         """
         self.webhook_url = webhook_url
+        self.session = requests.Session()
 
     def trigger_zap(
         self,
         data: Dict[str, Any],
-        webhook_url: str = None
+        webhook_url: Optional[str] = None
     ) -> Dict[str, Any]:
         """
         Trigger a Zapier zap via webhook.
@@ -46,10 +47,11 @@ class ZapierIntegration:
             return {"success": False, "error": "No webhook URL provided"}
 
         try:
-            response = requests.post(
+            response = self.session.post(
                 url,
                 json=data,
-                headers={'Content-Type': 'application/json'}
+                headers={'Content-Type': 'application/json'},
+                timeout=30
             )
             response.raise_for_status()
 
@@ -67,7 +69,7 @@ class ZapierIntegration:
         to: str,
         subject: str,
         body: str,
-        webhook_url: str = None
+        webhook_url: Optional[str] = None
     ) -> Dict[str, Any]:
         """Send email through Zapier."""
         data = {
@@ -83,7 +85,7 @@ class ZapierIntegration:
         task_name: str,
         description: str,
         priority: str = "medium",
-        webhook_url: str = None
+        webhook_url: Optional[str] = None
     ) -> Dict[str, Any]:
         """Create task in connected task manager through Zapier."""
         data = {
@@ -98,7 +100,7 @@ class ZapierIntegration:
         self,
         event_type: str,
         event_data: Dict[str, Any],
-        webhook_url: str = None
+        webhook_url: Optional[str] = None
     ) -> Dict[str, Any]:
         """Log event through Zapier."""
         data = {
@@ -107,6 +109,20 @@ class ZapierIntegration:
             "action": "log_event"
         }
         return self.trigger_zap(data, webhook_url)
+
+    def close(self) -> None:
+        """Close the HTTP session and cleanup resources."""
+        if hasattr(self, 'session'):
+            self.session.close()
+
+    def __enter__(self):
+        """Context manager entry."""
+        return self
+
+    def __exit__(self, exc_type, exc_val, exc_tb):
+        """Context manager exit."""
+        self.close()
+        return False
 
 
 # Example Zapier workflows you can create:

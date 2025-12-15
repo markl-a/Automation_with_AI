@@ -13,7 +13,7 @@ class N8NIntegration:
     This integration allows triggering n8n workflows from the framework.
     """
 
-    def __init__(self, base_url: str = None, api_key: str = None):
+    def __init__(self, base_url: Optional[str] = None, api_key: Optional[str] = None):
         """
         Initialize n8n integration.
 
@@ -23,6 +23,7 @@ class N8NIntegration:
         """
         self.base_url = base_url
         self.api_key = api_key
+        self.session = requests.Session()
 
     def trigger_webhook(
         self,
@@ -52,11 +53,12 @@ class N8NIntegration:
             if self.api_key:
                 headers['X-N8N-API-KEY'] = self.api_key
 
-            response = requests.request(
+            response = self.session.request(
                 method=method.upper(),
                 url=url,
                 json=data,
-                headers=headers
+                headers=headers,
+                timeout=30
             )
             response.raise_for_status()
 
@@ -77,7 +79,7 @@ class N8NIntegration:
             if self.api_key:
                 headers['X-N8N-API-KEY'] = self.api_key
 
-            response = requests.get(url, headers=headers)
+            response = self.session.get(url, headers=headers, timeout=30)
             response.raise_for_status()
 
             return {
@@ -102,7 +104,7 @@ class N8NIntegration:
 
             payload = {"data": data} if data else {}
 
-            response = requests.post(url, json=payload, headers=headers)
+            response = self.session.post(url, json=payload, headers=headers, timeout=30)
             response.raise_for_status()
 
             return {
@@ -162,6 +164,20 @@ class N8NIntegration:
             "template": template,
             "usage": "Import this JSON into n8n to create the workflow"
         }
+
+    def close(self) -> None:
+        """Close the HTTP session and cleanup resources."""
+        if hasattr(self, 'session'):
+            self.session.close()
+
+    def __enter__(self):
+        """Context manager entry."""
+        return self
+
+    def __exit__(self, exc_type, exc_val, exc_tb):
+        """Context manager exit."""
+        self.close()
+        return False
 
 
 # Example n8n workflow use cases:

@@ -161,13 +161,20 @@ class AirflowAdapter(BaseWorkflowAdapter):
         self,
         execution_id: str
     ) -> Dict[str, Any]:
+        # Validate execution_id before split
+        if not execution_id or not isinstance(execution_id, str):
+            return {
+                'success': False,
+                'error': 'Invalid execution_id: must be a non-empty string'
+            }
+
         parts = execution_id.split('___')
         if len(parts) == 2:
             dag_id, dag_run_id = parts
             return self.client.get_dag_run(dag_id, dag_run_id)
         return {
             'success': False,
-            'error': 'Invalid execution_id format'
+            'error': 'Invalid execution_id format: expected format "dag_id___dag_run_id"'
         }
 
     def list_workflows(self) -> Dict[str, Any]:
@@ -195,23 +202,30 @@ class TemporalAdapter(BaseWorkflowAdapter):
     ) -> Dict[str, Any]:
         """觸發 Temporal 工作流（同步包裝器）"""
         import asyncio
-        try:
-            loop = asyncio.get_event_loop()
-        except RuntimeError:
-            loop = asyncio.new_event_loop()
-            asyncio.set_event_loop(loop)
 
         async def _trigger():
             await self._ensure_connected()
-            workflow_type = data.pop('workflow_type', workflow_id) if data else workflow_id
-            args = data.pop('args', []) if data else []
+            # Safely extract workflow_type and args without mutating original data
+            if data:
+                workflow_type = data.pop('workflow_type', workflow_id)
+                args = data.pop('args', [])
+            else:
+                workflow_type = workflow_id
+                args = []
             return await self.client.start_workflow(
                 workflow_id=workflow_id,
                 workflow_type=workflow_type,
                 args=args
             )
 
-        return loop.run_until_complete(_trigger())
+        try:
+            return asyncio.run(_trigger())
+        except RuntimeError as e:
+            # Handle case where event loop is already running
+            if "cannot be called from a running event loop" in str(e):
+                loop = asyncio.get_event_loop()
+                return loop.run_until_complete(_trigger())
+            raise
 
     def get_workflow_status(
         self,
@@ -219,17 +233,19 @@ class TemporalAdapter(BaseWorkflowAdapter):
     ) -> Dict[str, Any]:
         """獲取工作流狀態"""
         import asyncio
-        try:
-            loop = asyncio.get_event_loop()
-        except RuntimeError:
-            loop = asyncio.new_event_loop()
-            asyncio.set_event_loop(loop)
 
         async def _get_status():
             await self._ensure_connected()
             return await self.client.get_workflow_result(execution_id)
 
-        return loop.run_until_complete(_get_status())
+        try:
+            return asyncio.run(_get_status())
+        except RuntimeError as e:
+            # Handle case where event loop is already running
+            if "cannot be called from a running event loop" in str(e):
+                loop = asyncio.get_event_loop()
+                return loop.run_until_complete(_get_status())
+            raise
 
     def list_workflows(self) -> Dict[str, Any]:
         """列出工作流（Temporal 不直接支持，返回提示）"""
@@ -253,11 +269,6 @@ class PrefectAdapter(BaseWorkflowAdapter):
     ) -> Dict[str, Any]:
         """觸發 Prefect Flow（同步包裝器）"""
         import asyncio
-        try:
-            loop = asyncio.get_event_loop()
-        except RuntimeError:
-            loop = asyncio.new_event_loop()
-            asyncio.set_event_loop(loop)
 
         async def _trigger():
             return await self.client.create_flow_run(
@@ -265,7 +276,14 @@ class PrefectAdapter(BaseWorkflowAdapter):
                 parameters=data or {}
             )
 
-        return loop.run_until_complete(_trigger())
+        try:
+            return asyncio.run(_trigger())
+        except RuntimeError as e:
+            # Handle case where event loop is already running
+            if "cannot be called from a running event loop" in str(e):
+                loop = asyncio.get_event_loop()
+                return loop.run_until_complete(_trigger())
+            raise
 
     def get_workflow_status(
         self,
@@ -273,30 +291,34 @@ class PrefectAdapter(BaseWorkflowAdapter):
     ) -> Dict[str, Any]:
         """獲取 Flow Run 狀態"""
         import asyncio
-        try:
-            loop = asyncio.get_event_loop()
-        except RuntimeError:
-            loop = asyncio.new_event_loop()
-            asyncio.set_event_loop(loop)
 
         async def _get_status():
             return await self.client.get_flow_run_status(execution_id)
 
-        return loop.run_until_complete(_get_status())
+        try:
+            return asyncio.run(_get_status())
+        except RuntimeError as e:
+            # Handle case where event loop is already running
+            if "cannot be called from a running event loop" in str(e):
+                loop = asyncio.get_event_loop()
+                return loop.run_until_complete(_get_status())
+            raise
 
     def list_workflows(self) -> Dict[str, Any]:
         """列出所有 Flows"""
         import asyncio
-        try:
-            loop = asyncio.get_event_loop()
-        except RuntimeError:
-            loop = asyncio.new_event_loop()
-            asyncio.set_event_loop(loop)
 
         async def _list():
             return await self.client.list_flows()
 
-        return loop.run_until_complete(_list())
+        try:
+            return asyncio.run(_list())
+        except RuntimeError as e:
+            # Handle case where event loop is already running
+            if "cannot be called from a running event loop" in str(e):
+                loop = asyncio.get_event_loop()
+                return loop.run_until_complete(_list())
+            raise
 
 
 class CeleryAdapter(BaseWorkflowAdapter):
@@ -312,8 +334,13 @@ class CeleryAdapter(BaseWorkflowAdapter):
         data: Optional[Dict[str, Any]] = None
     ) -> Dict[str, Any]:
         """發送 Celery 任務"""
-        args = data.pop('args', []) if data else []
-        kwargs = data if data else {}
+        # Safely extract args without mutating original data
+        if data:
+            args = data.pop('args', [])
+            kwargs = data
+        else:
+            args = []
+            kwargs = {}
 
         return self.client.send_task(
             task_name=workflow_id,

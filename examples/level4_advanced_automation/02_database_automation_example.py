@@ -17,42 +17,58 @@ def demo_database_automation():
     print("DATABASE AUTOMATION DEMO")
     print("=" * 60)
 
-    # Initialize database tool (using in-memory SQLite)
-    db = DatabaseAutomationTool(":memory:")
+    try:
+        # Initialize database tool (using in-memory SQLite)
+        db = DatabaseAutomationTool(":memory:")
 
-    print("\n1. CONNECTING TO DATABASE")
-    print("-" * 60)
-    result = db.connect()
-    print(f"Status: {result}")
+        print("\n1. CONNECTING TO DATABASE")
+        print("-" * 60)
+        result = db.connect()
+        print(f"Status: {result}")
+    except Exception as e:
+        print(f"Error connecting to database: {e}")
+        return
 
-    print("\n2. CREATING TABLE")
-    print("-" * 60)
-    schema = {
-        "id": "INTEGER PRIMARY KEY AUTOINCREMENT",
-        "name": "TEXT NOT NULL",
-        "email": "TEXT UNIQUE",
-        "age": "INTEGER",
-        "created_at": "TIMESTAMP DEFAULT CURRENT_TIMESTAMP"
-    }
-    result = db.create_table("users", schema)
-    print(f"Created 'users' table: {result}")
+    try:
+        print("\n2. CREATING TABLE")
+        print("-" * 60)
+        schema = {
+            "id": "INTEGER PRIMARY KEY AUTOINCREMENT",
+            "name": "TEXT NOT NULL",
+            "email": "TEXT UNIQUE",
+            "age": "INTEGER",
+            "created_at": "TIMESTAMP DEFAULT CURRENT_TIMESTAMP"
+        }
+        result = db.create_table("users", schema)
+        print(f"Created 'users' table: {result}")
+    except Exception as e:
+        print(f"Error creating table: {e}")
+        return
 
-    print("\n3. GENERATING AND EXECUTING INSERT QUERIES")
-    print("-" * 60)
-    users = [
-        {"name": "Alice Johnson", "email": "alice@example.com", "age": 28},
-        {"name": "Bob Smith", "email": "bob@example.com", "age": 35},
-        {"name": "Carol White", "email": "carol@example.com", "age": 42},
-        {"name": "David Brown", "email": "david@example.com", "age": 31},
-        {"name": "Eve Davis", "email": "eve@example.com", "age": 29}
-    ]
+    try:
+        print("\n3. GENERATING AND EXECUTING INSERT QUERIES")
+        print("-" * 60)
+        users = [
+            {"name": "Alice Johnson", "email": "alice@example.com", "age": 28},
+            {"name": "Bob Smith", "email": "bob@example.com", "age": 35},
+            {"name": "Carol White", "email": "carol@example.com", "age": 42},
+            {"name": "David Brown", "email": "david@example.com", "age": 31},
+            {"name": "Eve Davis", "email": "eve@example.com", "age": 29}
+        ]
 
-    for user in users:
-        query, values = db.generate_insert_query("users", user)
-        print(f"\nGenerated Query: {query}")
-        print(f"Values: {values}")
-        result = db.execute_query(query, values)
-        print(f"Inserted: {user['name']} - {result}")
+        for user in users:
+            try:
+                query, values = db.generate_insert_query("users", user)
+                print(f"\nGenerated Query: {query}")
+                print(f"Values: {values}")
+                result = db.execute_query(query, values)
+                print(f"Inserted: {user['name']} - {result}")
+            except Exception as e:
+                print(f"Error inserting {user['name']}: {e}")
+                continue
+    except Exception as e:
+        print(f"Error in insert operations: {e}")
+        return
 
     print("\n4. GENERATING AND EXECUTING SELECT QUERIES")
     print("-" * 60)
@@ -138,8 +154,11 @@ def demo_database_automation():
         print(f"  • {row['product']}: {row['total_qty']} units = ${row['revenue']:,.2f}")
 
     # Close database
-    db.close()
-    print("\n✓ Database operations completed successfully")
+    try:
+        db.close()
+        print("\n✓ Database operations completed successfully")
+    except Exception as e:
+        print(f"Error closing database: {e}")
 
 
 if __name__ == "__main__":

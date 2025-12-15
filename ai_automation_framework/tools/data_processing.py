@@ -30,6 +30,10 @@ class ExcelAutomationTool:
             Data and metadata
         """
         try:
+            # Validate file exists
+            if not Path(file_path).exists():
+                return {"success": False, "error": f"File not found: {file_path}"}
+
             df = pd.read_excel(file_path, sheet_name=sheet_name, header=header)
 
             return {
@@ -39,6 +43,10 @@ class ExcelAutomationTool:
                 "data": df.to_dict('records'),
                 "preview": df.head(5).to_dict('records')
             }
+        except FileNotFoundError as e:
+            return {"success": False, "error": f"File not found: {str(e)}"}
+        except ValueError as e:
+            return {"success": False, "error": f"Invalid Excel format or sheet: {str(e)}"}
         except Exception as e:
             return {"success": False, "error": str(e)}
 
@@ -86,7 +94,7 @@ class ExcelAutomationTool:
                             try:
                                 if len(str(cell.value)) > max_length:
                                     max_length = len(str(cell.value))
-                            except:
+                            except (TypeError, AttributeError):
                                 pass
                         adjusted_width = min(max_length + 2, 50)
                         worksheet.column_dimensions[column_letter].width = adjusted_width
@@ -116,6 +124,11 @@ class ExcelAutomationTool:
             Merge result
         """
         try:
+            # Validate all files exist
+            for file_path in file_paths:
+                if not Path(file_path).exists():
+                    return {"success": False, "error": f"File not found: {file_path}"}
+
             dfs = []
             for file_path in file_paths:
                 df = pd.read_excel(file_path)
@@ -130,6 +143,10 @@ class ExcelAutomationTool:
                 "total_rows": len(merged_df),
                 "output": output_path
             }
+        except FileNotFoundError as e:
+            return {"success": False, "error": f"File not found: {str(e)}"}
+        except ValueError as e:
+            return {"success": False, "error": f"Error merging files: {str(e)}"}
         except Exception as e:
             return {"success": False, "error": str(e)}
 
@@ -137,6 +154,10 @@ class ExcelAutomationTool:
     def excel_to_csv(excel_path: str, csv_path: str) -> Dict[str, Any]:
         """Convert Excel to CSV."""
         try:
+            # Validate file exists
+            if not Path(excel_path).exists():
+                return {"success": False, "error": f"File not found: {excel_path}"}
+
             df = pd.read_excel(excel_path)
             df.to_csv(csv_path, index=False)
 
@@ -146,6 +167,10 @@ class ExcelAutomationTool:
                 "output": csv_path,
                 "rows": len(df)
             }
+        except FileNotFoundError as e:
+            return {"success": False, "error": f"File not found: {str(e)}"}
+        except ValueError as e:
+            return {"success": False, "error": f"Invalid file format: {str(e)}"}
         except Exception as e:
             return {"success": False, "error": str(e)}
 
@@ -153,6 +178,10 @@ class ExcelAutomationTool:
     def csv_to_excel(csv_path: str, excel_path: str) -> Dict[str, Any]:
         """Convert CSV to Excel."""
         try:
+            # Validate file exists
+            if not Path(csv_path).exists():
+                return {"success": False, "error": f"File not found: {csv_path}"}
+
             df = pd.read_csv(csv_path)
             df.to_excel(excel_path, index=False)
 
@@ -162,6 +191,10 @@ class ExcelAutomationTool:
                 "output": excel_path,
                 "rows": len(df)
             }
+        except FileNotFoundError as e:
+            return {"success": False, "error": f"File not found: {str(e)}"}
+        except ValueError as e:
+            return {"success": False, "error": f"Invalid file format: {str(e)}"}
         except Exception as e:
             return {"success": False, "error": str(e)}
 
@@ -177,6 +210,10 @@ class CSVProcessingTool:
     ) -> Dict[str, Any]:
         """Read CSV file."""
         try:
+            # Validate file exists
+            if not Path(file_path).exists():
+                return {"success": False, "error": f"File not found: {file_path}"}
+
             df = pd.read_csv(file_path, delimiter=delimiter, encoding=encoding)
 
             return {
@@ -186,6 +223,12 @@ class CSVProcessingTool:
                 "data": df.to_dict('records'),
                 "dtypes": {col: str(dtype) for col, dtype in df.dtypes.items()}
             }
+        except FileNotFoundError as e:
+            return {"success": False, "error": f"File not found: {str(e)}"}
+        except UnicodeDecodeError as e:
+            return {"success": False, "error": f"Encoding error: {str(e)}"}
+        except pd.errors.ParserError as e:
+            return {"success": False, "error": f"CSV parsing error: {str(e)}"}
         except Exception as e:
             return {"success": False, "error": str(e)}
 
@@ -219,7 +262,19 @@ class CSVProcessingTool:
     ) -> Dict[str, Any]:
         """Filter CSV by column value."""
         try:
+            # Validate file exists
+            if not Path(file_path).exists():
+                return {"success": False, "error": f"File not found: {file_path}"}
+
             df = pd.read_csv(file_path)
+
+            # Validate column exists
+            if column not in df.columns:
+                return {
+                    "success": False,
+                    "error": f"Column '{column}' not found. Available columns: {list(df.columns)}"
+                }
+
             filtered_df = df[df[column] == value]
 
             if output_path:
@@ -231,6 +286,12 @@ class CSVProcessingTool:
                 "filtered_rows": len(filtered_df),
                 "data": filtered_df.to_dict('records')
             }
+        except FileNotFoundError as e:
+            return {"success": False, "error": f"File not found: {str(e)}"}
+        except KeyError as e:
+            return {"success": False, "error": f"Column error: {str(e)}"}
+        except pd.errors.ParserError as e:
+            return {"success": False, "error": f"CSV parsing error: {str(e)}"}
         except Exception as e:
             return {"success": False, "error": str(e)}
 
@@ -252,7 +313,36 @@ class CSVProcessingTool:
             Aggregated data
         """
         try:
+            # Validate file exists
+            if not Path(file_path).exists():
+                return {"success": False, "error": f"File not found: {file_path}"}
+
             df = pd.read_csv(file_path)
+
+            # Validate group_by column exists
+            if group_by not in df.columns:
+                return {
+                    "success": False,
+                    "error": f"Group by column '{group_by}' not found. Available columns: {list(df.columns)}"
+                }
+
+            # Validate aggregation columns exist
+            invalid_cols = [col for col in aggregations.keys() if col not in df.columns]
+            if invalid_cols:
+                return {
+                    "success": False,
+                    "error": f"Aggregation columns not found: {invalid_cols}. Available columns: {list(df.columns)}"
+                }
+
+            # Validate aggregation operations
+            valid_operations = ['sum', 'mean', 'median', 'min', 'max', 'count', 'std', 'var']
+            invalid_ops = [op for op in aggregations.values() if op not in valid_operations]
+            if invalid_ops:
+                return {
+                    "success": False,
+                    "error": f"Invalid aggregation operations: {invalid_ops}. Valid operations: {valid_operations}"
+                }
+
             result = df.groupby(group_by).agg(aggregations).reset_index()
 
             return {
@@ -260,6 +350,14 @@ class CSVProcessingTool:
                 "groups": len(result),
                 "data": result.to_dict('records')
             }
+        except FileNotFoundError as e:
+            return {"success": False, "error": f"File not found: {str(e)}"}
+        except KeyError as e:
+            return {"success": False, "error": f"Column error: {str(e)}"}
+        except pd.errors.ParserError as e:
+            return {"success": False, "error": f"CSV parsing error: {str(e)}"}
+        except ValueError as e:
+            return {"success": False, "error": f"Aggregation error: {str(e)}"}
         except Exception as e:
             return {"success": False, "error": str(e)}
 
@@ -313,6 +411,20 @@ class DataAnalysisTool:
         try:
             df = pd.DataFrame(data)
 
+            # Validate column exists
+            if column not in df.columns:
+                return {
+                    "success": False,
+                    "error": f"Column '{column}' not found. Available columns: {list(df.columns)}"
+                }
+
+            # Validate column is numeric
+            if not pd.api.types.is_numeric_dtype(df[column]):
+                return {
+                    "success": False,
+                    "error": f"Column '{column}' must be numeric for outlier detection"
+                }
+
             if method == 'iqr':
                 Q1 = df[column].quantile(0.25)
                 Q3 = df[column].quantile(0.75)
@@ -333,6 +445,10 @@ class DataAnalysisTool:
                 "outlier_count": len(outliers),
                 "outliers": outliers.to_dict('records')
             }
+        except KeyError as e:
+            return {"success": False, "error": f"Column error: {str(e)}"}
+        except ValueError as e:
+            return {"success": False, "error": f"Value error: {str(e)}"}
         except Exception as e:
             return {"success": False, "error": str(e)}
 
@@ -347,6 +463,24 @@ class DataAnalysisTool:
         """Create pivot table from data."""
         try:
             df = pd.DataFrame(data)
+
+            # Validate all required columns exist
+            required_columns = [index, columns, values]
+            missing_columns = [col for col in required_columns if col not in df.columns]
+            if missing_columns:
+                return {
+                    "success": False,
+                    "error": f"Required columns not found: {missing_columns}. Available columns: {list(df.columns)}"
+                }
+
+            # Validate aggfunc
+            valid_aggfuncs = ['sum', 'mean', 'median', 'min', 'max', 'count', 'std', 'var']
+            if aggfunc not in valid_aggfuncs:
+                return {
+                    "success": False,
+                    "error": f"Invalid aggregation function: {aggfunc}. Valid options: {valid_aggfuncs}"
+                }
+
             pivot = pd.pivot_table(
                 df,
                 index=index,
@@ -359,6 +493,10 @@ class DataAnalysisTool:
                 "success": True,
                 "data": pivot.to_dict()
             }
+        except KeyError as e:
+            return {"success": False, "error": f"Column error: {str(e)}"}
+        except ValueError as e:
+            return {"success": False, "error": f"Pivot error: {str(e)}"}
         except Exception as e:
             return {"success": False, "error": str(e)}
 

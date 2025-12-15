@@ -15,6 +15,7 @@ from ai_automation_framework.llm import OpenAIClient
 from ai_automation_framework.agents import BaseAgent
 import pandas as pd
 import json
+from pathlib import Path
 
 
 class KaggleDataAnalyst:
@@ -386,33 +387,78 @@ class KaggleWorkflow:
 
         # 加載數據
         print("\n📂 加載數據...")
-        train_df = pd.read_csv(train_path)
-        test_df = pd.read_csv(test_path)
-        print(f"訓練集: {train_df.shape}, 測試集: {test_df.shape}")
+        try:
+            # Validate file paths exist
+            if not os.path.exists(train_path):
+                raise FileNotFoundError(f"Training file not found: {train_path}")
+            if not os.path.exists(test_path):
+                raise FileNotFoundError(f"Test file not found: {test_path}")
+
+            # Load CSV files
+            train_df = pd.read_csv(train_path)
+            test_df = pd.read_csv(test_path)
+
+            # Validate loaded data
+            if train_df.empty:
+                raise ValueError(f"Training file is empty: {train_path}")
+            if test_df.empty:
+                raise ValueError(f"Test file is empty: {test_path}")
+
+            print(f"訓練集: {train_df.shape}, 測試集: {test_df.shape}")
+        except FileNotFoundError as e:
+            print(f"❌ 文件錯誤: {e}")
+            return None
+        except pd.errors.EmptyDataError:
+            print(f"❌ CSV 文件為空")
+            return None
+        except pd.errors.ParserError as e:
+            print(f"❌ CSV 解析錯誤: {e}")
+            return None
+        except Exception as e:
+            print(f"❌ 加載數據時出錯: {e}")
+            return None
+
+        # Validate target column exists
+        if target not in train_df.columns:
+            print(f"❌ 目標列 '{target}' 不存在於訓練集中")
+            print(f"可用列: {', '.join(train_df.columns)}")
+            return None
 
         # 階段 1: 數據分析
         print("\n" + "=" * 60)
         print("階段 1: 數據探索和分析")
         print("=" * 60)
-        analysis = self.analyst.analyze_dataset(train_df, target)
-        print("\n📊 AI 分析結果:")
-        print(analysis['ai_insights'])
+        try:
+            analysis = self.analyst.analyze_dataset(train_df, target)
+            print("\n📊 AI 分析結果:")
+            print(analysis['ai_insights'])
+        except Exception as e:
+            print(f"❌ 數據分析錯誤: {e}")
+            return None
 
         # 階段 2: 特徵工程建議
         print("\n" + "=" * 60)
         print("階段 2: 特徵工程建議")
         print("=" * 60)
-        features = self.analyst.suggest_features(train_df, target, top_n=5)
-        print("\n💡 特徵建議:")
-        print(features)
+        try:
+            features = self.analyst.suggest_features(train_df, target, top_n=5)
+            print("\n💡 特徵建議:")
+            print(features)
+        except Exception as e:
+            print(f"❌ 特徵建議錯誤: {e}")
+            features = "特徵建議生成失敗"
 
         # 階段 3: 模型建議
         print("\n" + "=" * 60)
         print("階段 3: 模型選擇")
         print("=" * 60)
-        models = self.analyst.suggest_models(train_df, target)
-        print("\n🎯 模型建議:")
-        print(models)
+        try:
+            models = self.analyst.suggest_models(train_df, target)
+            print("\n🎯 模型建議:")
+            print(models)
+        except Exception as e:
+            print(f"❌ 模型建議錯誤: {e}")
+            models = "模型建議生成失敗"
 
         # 總結
         print("\n" + "=" * 60)

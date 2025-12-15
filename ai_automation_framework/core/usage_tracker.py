@@ -233,12 +233,15 @@ By Model:
         if not self.save_path:
             return
 
-        self.save_path.parent.mkdir(parents=True, exist_ok=True)
+        try:
+            self.save_path.parent.mkdir(parents=True, exist_ok=True)
 
-        data = [asdict(record) for record in self.records]
+            data = [asdict(record) for record in self.records]
 
-        with open(self.save_path, 'w') as f:
-            json.dump(data, f, indent=2)
+            with open(self.save_path, 'w') as f:
+                json.dump(data, f, indent=2)
+        except Exception as e:
+            logger.error(f"Failed to save usage records: {e}")
 
     def _load_records(self) -> None:
         """Load records from file."""
