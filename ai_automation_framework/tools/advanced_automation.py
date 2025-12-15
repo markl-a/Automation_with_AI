@@ -134,7 +134,7 @@ class EmailAutomationTool:
             return {"success": False, "error": str(e)}
 
     @staticmethod
-    def _get_email_body(email_message) -> str:
+    def _get_email_body(email_message: email.message.Message) -> str:
         """Extract body from email message."""
         if email_message.is_multipart():
             for part in email_message.walk():
@@ -346,6 +346,14 @@ class WebScraperTool:
             Response data
         """
         try:
+            # Validate URL
+            if not url or not isinstance(url, str):
+                raise ValueError("URL must be a non-empty string")
+
+            # Basic URL validation
+            if not url.startswith(('http://', 'https://')):
+                raise ValueError("URL must start with http:// or https://")
+
             import requests
             response = requests.get(url, timeout=timeout)
             response.raise_for_status()
@@ -357,6 +365,10 @@ class WebScraperTool:
                 "headers": dict(response.headers),
                 "url": url
             }
+        except ValueError as e:
+            return {"success": False, "error": f"Validation error: {str(e)}"}
+        except requests.exceptions.RequestException as e:
+            return {"success": False, "error": f"Request error: {str(e)}"}
         except Exception as e:
             return {"success": False, "error": str(e)}
 
@@ -373,6 +385,17 @@ class WebScraperTool:
             Extracted links
         """
         try:
+            # Validate html_content
+            if not html_content or not isinstance(html_content, str):
+                raise ValueError("html_content must be a non-empty string")
+
+            # Validate base_url if provided
+            if base_url is not None:
+                if not isinstance(base_url, str) or not base_url:
+                    raise ValueError("base_url must be a non-empty string if provided")
+                if not base_url.startswith(('http://', 'https://')):
+                    raise ValueError("base_url must start with http:// or https://")
+
             from bs4 import BeautifulSoup
             from urllib.parse import urljoin
 
@@ -393,6 +416,8 @@ class WebScraperTool:
                 "count": len(links),
                 "links": links
             }
+        except ValueError as e:
+            return {"success": False, "error": f"Validation error: {str(e)}"}
         except Exception as e:
             return {"success": False, "error": str(e)}
 
@@ -409,6 +434,10 @@ class WebScraperTool:
             Extracted text
         """
         try:
+            # Validate html_content
+            if not html_content or not isinstance(html_content, str):
+                raise ValueError("html_content must be a non-empty string")
+
             from bs4 import BeautifulSoup
 
             soup = BeautifulSoup(html_content, 'html.parser')
@@ -423,6 +452,8 @@ class WebScraperTool:
                 "success": True,
                 "text": text
             }
+        except ValueError as e:
+            return {"success": False, "error": f"Validation error: {str(e)}"}
         except Exception as e:
             return {"success": False, "error": str(e)}
 
@@ -438,6 +469,10 @@ class WebScraperTool:
             Extracted table data
         """
         try:
+            # Validate html_content
+            if not html_content or not isinstance(html_content, str):
+                raise ValueError("html_content must be a non-empty string")
+
             from bs4 import BeautifulSoup
 
             soup = BeautifulSoup(html_content, 'html.parser')
@@ -456,6 +491,8 @@ class WebScraperTool:
                 "table_count": len(tables),
                 "tables": tables
             }
+        except ValueError as e:
+            return {"success": False, "error": f"Validation error: {str(e)}"}
         except Exception as e:
             return {"success": False, "error": str(e)}
 

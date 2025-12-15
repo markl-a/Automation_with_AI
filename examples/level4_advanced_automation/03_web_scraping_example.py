@@ -22,9 +22,14 @@ def demo_web_scraping():
     print("\n1. FETCHING WEB PAGE")
     print("-" * 60)
     # Using example.com as a safe test URL
-    result = scraper.fetch_url("http://example.com")
+    try:
+        result = scraper.fetch_url("http://example.com")
+    except Exception as e:
+        print(f"Error fetching URL: {e}")
+        print("Continuing with demo using cached HTML...")
+        result = {'success': False}
 
-    if result['success']:
+    if result.get('success'):
         print(f"✓ Status Code: {result['status_code']}")
         print(f"✓ Content Length: {len(result['content'])} characters")
         print(f"✓ Content Type: {result['headers'].get('Content-Type', 'N/A')}")
@@ -32,21 +37,29 @@ def demo_web_scraping():
         print(result['content'][:200])
 
         # Extract text from HTML
-        print("\n2. EXTRACTING TEXT FROM HTML")
-        print("-" * 60)
-        text_result = scraper.extract_text(result['content'])
-        if text_result['success']:
-            print(f"✓ Extracted text:")
-            print(f"  {text_result['text'][:300]}...")
+        try:
+            print("\n2. EXTRACTING TEXT FROM HTML")
+            print("-" * 60)
+            text_result = scraper.extract_text(result['content'])
+            if text_result['success']:
+                print(f"✓ Extracted text:")
+                print(f"  {text_result['text'][:300]}...")
+        except Exception as e:
+            print(f"Error extracting text: {e}")
 
         # Extract all links
-        print("\n3. EXTRACTING LINKS")
-        print("-" * 60)
-        links_result = scraper.extract_links(result['content'], "http://example.com")
-        if links_result['success']:
-            print(f"✓ Found {links_result['count']} links")
-            for link in links_result['links'][:5]:
-                print(f"  • {link['text']}: {link['url']}")
+        try:
+            print("\n3. EXTRACTING LINKS")
+            print("-" * 60)
+            links_result = scraper.extract_links(result['content'], "http://example.com")
+            if links_result['success']:
+                print(f"✓ Found {links_result['count']} links")
+                for link in links_result['links'][:5]:
+                    print(f"  • {link['text']}: {link['url']}")
+        except Exception as e:
+            print(f"Error extracting links: {e}")
+    else:
+        print("✗ Failed to fetch URL, using sample HTML for demo")
 
     print("\n4. EXTRACTING SPECIFIC HTML ELEMENTS")
     print("-" * 60)
@@ -74,22 +87,28 @@ def demo_web_scraping():
     """
 
     # Extract headings
-    headings = scraper.extract_text(sample_html, tag='h2')
-    if headings['success']:
-        print(f"✓ Headings (h2):")
-        for heading in headings['text']:
-            print(f"  • {heading}")
+    try:
+        headings = scraper.extract_text(sample_html, tag='h2')
+        if headings['success']:
+            print(f"✓ Headings (h2):")
+            for heading in headings['text']:
+                print(f"  • {heading}")
+    except Exception as e:
+        print(f"Error extracting headings: {e}")
 
     # Extract table data
-    print("\n5. EXTRACTING TABLE DATA")
-    print("-" * 60)
-    tables = scraper.extract_table_data(sample_html)
-    if tables['success']:
-        print(f"✓ Found {tables['table_count']} table(s)")
-        for i, table in enumerate(tables['tables']):
-            print(f"\nTable {i+1}:")
-            for row in table:
-                print(f"  {' | '.join(row)}")
+    try:
+        print("\n5. EXTRACTING TABLE DATA")
+        print("-" * 60)
+        tables = scraper.extract_table_data(sample_html)
+        if tables['success']:
+            print(f"✓ Found {tables['table_count']} table(s)")
+            for i, table in enumerate(tables['tables']):
+                print(f"\nTable {i+1}:")
+                for row in table:
+                    print(f"  {' | '.join(row)}")
+    except Exception as e:
+        print(f"Error extracting table data: {e}")
 
     print("\n6. PRACTICAL USE CASE - PRICE MONITORING")
     print("-" * 60)

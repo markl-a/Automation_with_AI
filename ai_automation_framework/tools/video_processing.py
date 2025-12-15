@@ -7,7 +7,7 @@ Video Processing Tools
 
 import os
 import subprocess
-from typing import Optional, List, Tuple
+from typing import Optional, List, Tuple, Dict, Any
 from pathlib import Path
 
 try:
@@ -55,33 +55,44 @@ class VideoProcessor:
         if not HAS_OPENCV:
             raise ImportError("需要安裝 OpenCV: pip install opencv-python")
 
+        # Validate video file exists
+        if not os.path.exists(video_path):
+            raise FileNotFoundError(f"Video file not found: {video_path}")
+
         os.makedirs(output_dir, exist_ok=True)
+
         cap = cv2.VideoCapture(video_path)
 
-        frame_count = 0
-        saved_count = 0
-        saved_frames = []
+        # Validate video capture was successful
+        if not cap.isOpened():
+            raise RuntimeError(f"Failed to open video file: {video_path}")
 
-        while cap.isOpened():
-            ret, frame = cap.read()
-            if not ret:
-                break
+        try:
+            frame_count = 0
+            saved_count = 0
+            saved_frames = []
 
-            if frame_count % interval == 0:
-                output_path = os.path.join(output_dir, f"frame_{saved_count:04d}.jpg")
-                cv2.imwrite(output_path, frame)
-                saved_frames.append(output_path)
-                saved_count += 1
-
-                if max_frames and saved_count >= max_frames:
+            while cap.isOpened():
+                ret, frame = cap.read()
+                if not ret:
                     break
 
-            frame_count += 1
+                if frame_count % interval == 0:
+                    output_path = os.path.join(output_dir, f"frame_{saved_count:04d}.jpg")
+                    cv2.imwrite(output_path, frame)
+                    saved_frames.append(output_path)
+                    saved_count += 1
 
-        cap.release()
-        return saved_frames
+                    if max_frames and saved_count >= max_frames:
+                        break
 
-    def get_video_info(self, video_path: str) -> dict:
+                frame_count += 1
+
+            return saved_frames
+        finally:
+            cap.release()
+
+    def get_video_info(self, video_path: str) -> Dict[str, Any]:
         """
         獲取視頻信息
 
@@ -94,18 +105,31 @@ class VideoProcessor:
         if not HAS_OPENCV:
             raise ImportError("需要安裝 OpenCV: pip install opencv-python")
 
+        # Validate video file exists
+        if not os.path.exists(video_path):
+            raise FileNotFoundError(f"Video file not found: {video_path}")
+
         cap = cv2.VideoCapture(video_path)
 
-        info = {
-            "width": int(cap.get(cv2.CAP_PROP_FRAME_WIDTH)),
-            "height": int(cap.get(cv2.CAP_PROP_FRAME_HEIGHT)),
-            "fps": cap.get(cv2.CAP_PROP_FPS),
-            "frame_count": int(cap.get(cv2.CAP_PROP_FRAME_COUNT)),
-            "duration": int(cap.get(cv2.CAP_PROP_FRAME_COUNT) / cap.get(cv2.CAP_PROP_FPS)),
-        }
+        # Validate video capture was successful
+        if not cap.isOpened():
+            raise RuntimeError(f"Failed to open video file: {video_path}")
 
-        cap.release()
-        return info
+        try:
+            fps = cap.get(cv2.CAP_PROP_FPS)
+            frame_count = cap.get(cv2.CAP_PROP_FRAME_COUNT)
+
+            info = {
+                "width": int(cap.get(cv2.CAP_PROP_FRAME_WIDTH)),
+                "height": int(cap.get(cv2.CAP_PROP_FRAME_HEIGHT)),
+                "fps": fps,
+                "frame_count": int(frame_count),
+                "duration": int(frame_count / fps) if fps > 0 else 0,
+            }
+
+            return info
+        finally:
+            cap.release()
 
     def trim_video(
         self,
@@ -224,6 +248,12 @@ class VideoProcessor:
         Returns:
             輸出文件路徑
         """
+        # Validate codec parameters
+        if not codec or not isinstance(codec, str) or not codec.strip():
+            raise ValueError(f"Invalid codec parameter: {codec}")
+        if not audio_codec or not isinstance(audio_codec, str) or not audio_codec.strip():
+            raise ValueError(f"Invalid audio_codec parameter: {audio_codec}")
+
         cmd = [
             'ffmpeg',
             '-i', input_path,
@@ -233,10 +263,12 @@ class VideoProcessor:
         ]
 
         try:
-            subprocess.run(cmd, check=True, capture_output=True)
+            subprocess.run(cmd, check=True, capture_output=True, timeout=300)
             return output_path
         except subprocess.CalledProcessError as e:
             raise Exception(f"視頻轉換失敗: {e.stderr.decode()}")
+        except subprocess.TimeoutExpired:
+            raise Exception(f"視頻轉換超時 (300秒)")
 
     def resize_video(
         self,

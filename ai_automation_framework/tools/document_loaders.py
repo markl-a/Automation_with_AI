@@ -64,7 +64,17 @@ class TextLoader(BaseDocumentLoader):
 
     def load(self) -> List[Dict[str, Any]]:
         """Load text file."""
-        content = self.file_path.read_text(encoding=self.encoding)
+        try:
+            content = self.file_path.read_text(encoding=self.encoding)
+        except UnicodeDecodeError as e:
+            raise ValueError(
+                f"Failed to decode file '{self.file_path}' with encoding '{self.encoding}': {e}"
+            )
+        except OSError as e:
+            raise OSError(
+                f"Failed to read file '{self.file_path}': {e}"
+            )
+
         metadata = self.get_metadata()
 
         if self.chunk_size:
@@ -115,20 +125,36 @@ class PDFLoader(BaseDocumentLoader):
         documents = []
         metadata = self.get_metadata()
 
-        with open(self.file_path, 'rb') as file:
-            pdf_reader = pypdf.PdfReader(file)
+        try:
+            with open(self.file_path, 'rb') as file:
+                try:
+                    pdf_reader = pypdf.PdfReader(file)
+                except pypdf.errors.PdfReadError as e:
+                    raise ValueError(
+                        f"Failed to read PDF file '{self.file_path}': {e}"
+                    )
 
-            for page_num, page in enumerate(pdf_reader.pages):
-                text = page.extract_text()
+                for page_num, page in enumerate(pdf_reader.pages):
+                    try:
+                        text = page.extract_text()
+                    except Exception as e:
+                        raise ValueError(
+                            f"Failed to extract text from page {page_num + 1} "
+                            f"in '{self.file_path}': {e}"
+                        )
 
-                documents.append({
-                    "content": text,
-                    "metadata": {
-                        **metadata,
-                        "page": page_num + 1,
-                        "total_pages": len(pdf_reader.pages)
-                    }
-                })
+                    documents.append({
+                        "content": text,
+                        "metadata": {
+                            **metadata,
+                            "page": page_num + 1,
+                            "total_pages": len(pdf_reader.pages)
+                        }
+                    })
+        except OSError as e:
+            raise OSError(
+                f"Failed to open PDF file '{self.file_path}': {e}"
+            )
 
         return documents
 
@@ -155,22 +181,33 @@ class DocxLoader(BaseDocumentLoader):
                 "Install it with: pip install python-docx"
             )
 
-        doc = Document(self.file_path)
+        try:
+            doc = Document(self.file_path)
+        except Exception as e:
+            raise ValueError(
+                f"Failed to open DOCX file '{self.file_path}': {e}"
+            )
+
         paragraphs = []
         metadata = self.get_metadata()
 
-        for i, para in enumerate(doc.paragraphs):
-            if para.text.strip():  # Skip empty paragraphs
-                paragraphs.append({
-                    "content": para.text,
-                    "metadata": {
-                        **metadata,
-                        "paragraph": i + 1
-                    }
-                })
+        try:
+            for i, para in enumerate(doc.paragraphs):
+                if para.text.strip():  # Skip empty paragraphs
+                    paragraphs.append({
+                        "content": para.text,
+                        "metadata": {
+                            **metadata,
+                            "paragraph": i + 1
+                        }
+                    })
 
-        # Combine all paragraphs
-        full_text = "\n\n".join(p["content"] for p in paragraphs)
+            # Combine all paragraphs
+            full_text = "\n\n".join(p["content"] for p in paragraphs)
+        except Exception as e:
+            raise ValueError(
+                f"Failed to extract text from DOCX file '{self.file_path}': {e}"
+            )
 
         return [{
             "content": full_text,
@@ -197,7 +234,17 @@ class MarkdownLoader(BaseDocumentLoader):
 
     def load(self) -> List[Dict[str, Any]]:
         """Load Markdown file."""
-        content = self.file_path.read_text(encoding="utf-8")
+        try:
+            content = self.file_path.read_text(encoding="utf-8")
+        except UnicodeDecodeError as e:
+            raise ValueError(
+                f"Failed to decode Markdown file '{self.file_path}' with UTF-8 encoding: {e}"
+            )
+        except OSError as e:
+            raise OSError(
+                f"Failed to read Markdown file '{self.file_path}': {e}"
+            )
+
         metadata = self.get_metadata()
 
         if self.split_by_headers:
@@ -261,11 +308,24 @@ class DirectoryLoader:
             loader_map: Mapping of file extensions to loaders
         """
         self.directory_path = Path(directory_path)
+        if not self.directory_path.exists():
+            raise FileNotFoundError(f"Directory not found: {directory_path}")
         if not self.directory_path.is_dir():
             raise NotADirectoryError(f"Not a directory: {directory_path}")
 
         self.glob_pattern = glob_pattern
-        self.exclude_patterns = exclude_patterns or []
+
+        # Validate exclude_patterns to prevent path traversal
+        self.exclude_patterns = []
+        if exclude_patterns:
+            for pattern in exclude_patterns:
+                # Check for path traversal attempts
+                if ".." in pattern or pattern.startswith("/") or pattern.startswith("\\"):
+                    raise ValueError(
+                        f"Invalid exclude pattern '{pattern}': "
+                        "Path traversal patterns are not allowed"
+                    )
+                self.exclude_patterns.append(pattern)
 
         self.loader_map = loader_map or {
             ".txt": TextLoader,
@@ -277,6 +337,7 @@ class DirectoryLoader:
     def load(self) -> List[Dict[str, Any]]:
         """Load all documents from directory."""
         documents = []
+        errors = []
 
         for file_path in self.directory_path.glob(self.glob_pattern):
             if not file_path.is_file():
@@ -295,9 +356,22 @@ class DirectoryLoader:
                 loader = loader_class(str(file_path))
                 docs = loader.load()
                 documents.extend(docs)
+            except FileNotFoundError as e:
+                error_msg = f"File not found while loading '{file_path}': {e}"
+                errors.append(error_msg)
+                print(error_msg)
+            except ValueError as e:
+                error_msg = f"Value error loading '{file_path}': {e}"
+                errors.append(error_msg)
+                print(error_msg)
+            except OSError as e:
+                error_msg = f"OS error loading '{file_path}': {e}"
+                errors.append(error_msg)
+                print(error_msg)
             except Exception as e:
-                print(f"Error loading {file_path}: {e}")
-                continue
+                error_msg = f"Unexpected error loading '{file_path}': {type(e).__name__}: {e}"
+                errors.append(error_msg)
+                print(error_msg)
 
         return documents
 
@@ -312,9 +386,25 @@ def load_document(file_path: str, **kwargs) -> List[Dict[str, Any]]:
 
     Returns:
         List of document chunks with metadata
+
+    Raises:
+        FileNotFoundError: If the file does not exist
+        ValueError: If the file type is not supported
     """
     path = Path(file_path)
+
+    # Validate file existence
+    if not path.exists():
+        raise FileNotFoundError(f"File not found: {file_path}")
+
+    # Validate it's a file, not a directory
+    if not path.is_file():
+        raise ValueError(f"Path is not a file: {file_path}")
+
+    # Validate and get file extension
     extension = path.suffix.lower()
+    if not extension:
+        raise ValueError(f"File has no extension: {file_path}")
 
     loader_map = {
         ".txt": TextLoader,
@@ -325,7 +415,11 @@ def load_document(file_path: str, **kwargs) -> List[Dict[str, Any]]:
 
     loader_class = loader_map.get(extension)
     if not loader_class:
-        raise ValueError(f"Unsupported file type: {extension}")
+        supported_types = ", ".join(loader_map.keys())
+        raise ValueError(
+            f"Unsupported file type '{extension}' for file '{file_path}'. "
+            f"Supported types: {supported_types}"
+        )
 
     loader = loader_class(file_path, **kwargs)
     return loader.load()

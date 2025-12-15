@@ -162,6 +162,20 @@ class FileSystemTool:
         Returns:
             File content and metadata
         """
+        # Validate file_path parameter
+        if not file_path or not file_path.strip():
+            return {"error": "file_path cannot be empty", "success": False}
+
+        # Validate encoding parameter
+        if not encoding or not encoding.strip():
+            return {"error": "encoding cannot be empty", "success": False}
+
+        try:
+            # Test if encoding is valid
+            "".encode(encoding)
+        except LookupError:
+            return {"error": f"Invalid encoding: {encoding}", "success": False}
+
         try:
             path = Path(file_path)
 
@@ -180,8 +194,14 @@ class FileSystemTool:
                 "lines": len(content.splitlines()),
                 "success": True
             }
+        except UnicodeDecodeError as e:
+            return {"error": f"Encoding error: {str(e)}", "success": False}
+        except PermissionError as e:
+            return {"error": f"Permission denied: {str(e)}", "success": False}
+        except OSError as e:
+            return {"error": f"OS error: {str(e)}", "success": False}
         except Exception as e:
-            return {"error": str(e), "success": False}
+            return {"error": f"Unexpected error: {str(e)}", "success": False}
 
     @staticmethod
     def write_file(
@@ -200,6 +220,20 @@ class FileSystemTool:
         Returns:
             Operation result
         """
+        # Validate file_path parameter
+        if not file_path or not file_path.strip():
+            return {"error": "file_path cannot be empty", "success": False}
+
+        # Validate encoding parameter
+        if not encoding or not encoding.strip():
+            return {"error": "encoding cannot be empty", "success": False}
+
+        try:
+            # Test if encoding is valid
+            "".encode(encoding)
+        except LookupError:
+            return {"error": f"Invalid encoding: {encoding}", "success": False}
+
         try:
             path = Path(file_path)
             path.parent.mkdir(parents=True, exist_ok=True)
@@ -210,8 +244,14 @@ class FileSystemTool:
                 "size": path.stat().st_size,
                 "success": True
             }
+        except UnicodeEncodeError as e:
+            return {"error": f"Encoding error: {str(e)}", "success": False}
+        except PermissionError as e:
+            return {"error": f"Permission denied: {str(e)}", "success": False}
+        except OSError as e:
+            return {"error": f"OS error: {str(e)}", "success": False}
         except Exception as e:
-            return {"error": str(e), "success": False}
+            return {"error": f"Unexpected error: {str(e)}", "success": False}
 
     @staticmethod
     def list_directory(dir_path: str) -> Dict[str, Any]:
@@ -224,6 +264,10 @@ class FileSystemTool:
         Returns:
             Directory contents
         """
+        # Validate dir_path parameter
+        if not dir_path or not dir_path.strip():
+            return {"error": "dir_path cannot be empty", "success": False}
+
         try:
             path = Path(dir_path)
 
@@ -253,8 +297,12 @@ class FileSystemTool:
                 "total_items": len(files) + len(directories),
                 "success": True
             }
+        except PermissionError as e:
+            return {"error": f"Permission denied: {str(e)}", "success": False}
+        except OSError as e:
+            return {"error": f"OS error: {str(e)}", "success": False}
         except Exception as e:
-            return {"error": str(e), "success": False}
+            return {"error": f"Unexpected error: {str(e)}", "success": False}
 
 
 class DateTimeTool:
@@ -286,7 +334,7 @@ class DateTimeTool:
     def calculate_date_difference(
         date1: str,
         date2: str,
-        format: str = "%Y-%m-%d"
+        date_format: str = "%Y-%m-%d"
     ) -> Dict[str, Any]:
         """
         Calculate difference between two dates.
@@ -294,14 +342,14 @@ class DateTimeTool:
         Args:
             date1: First date string
             date2: Second date string
-            format: Date format
+            date_format: Date format string
 
         Returns:
             Date difference information
         """
         try:
-            d1 = datetime.strptime(date1, format)
-            d2 = datetime.strptime(date2, format)
+            d1 = datetime.strptime(date1, date_format)
+            d2 = datetime.strptime(date2, date_format)
             diff = abs((d2 - d1).days)
 
             return {
@@ -312,8 +360,10 @@ class DateTimeTool:
                 "difference_months": diff // 30,
                 "success": True
             }
+        except ValueError as e:
+            return {"error": f"Date parsing error: {str(e)}", "success": False}
         except Exception as e:
-            return {"error": str(e), "success": False}
+            return {"error": f"Unexpected error: {str(e)}", "success": False}
 
 
 class DataProcessingTool:

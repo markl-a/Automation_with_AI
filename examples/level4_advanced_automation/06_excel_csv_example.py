@@ -25,8 +25,12 @@ def demo_excel_csv():
     analysis_tool = DataAnalysisTool()
 
     # Create temp directory for output files
-    temp_dir = tempfile.mkdtemp()
-    print(f"\nTemp directory: {temp_dir}")
+    try:
+        temp_dir = tempfile.mkdtemp()
+        print(f"\nTemp directory: {temp_dir}")
+    except Exception as e:
+        print(f"Error creating temp directory: {e}")
+        return
 
     print("\n1. CREATING EXCEL FILE")
     print("-" * 60)
@@ -43,62 +47,87 @@ def demo_excel_csv():
         {"date": "2025-01-08", "product": "Monitor", "quantity": 12, "price": 300, "region": "West"},
     ]
 
-    excel_path = Path(temp_dir) / "sales_data.xlsx"
-    result = excel_tool.write_excel(
-        str(excel_path),
-        sales_data,
-        sheet_name="Sales",
-        auto_format=True
-    )
+    try:
+        excel_path = Path(temp_dir) / "sales_data.xlsx"
+        result = excel_tool.write_excel(
+            str(excel_path),
+            sales_data,
+            sheet_name="Sales",
+            auto_format=True
+        )
 
-    print(f"✓ Created Excel file: {result['file']}")
-    print(f"✓ Rows: {result['rows']}, Columns: {result['columns']}")
+        print(f"✓ Created Excel file: {result['file']}")
+        print(f"✓ Rows: {result['rows']}, Columns: {result['columns']}")
+    except Exception as e:
+        print(f"Error creating Excel file: {e}")
+        return
 
     print("\n2. READING EXCEL FILE")
     print("-" * 60)
 
-    result = excel_tool.read_excel(str(excel_path))
+    try:
+        result = excel_tool.read_excel(str(excel_path))
 
-    print(f"✓ Read {result['rows']} rows")
-    print(f"✓ Columns: {', '.join(result['columns'])}")
-    print("\nPreview (first 3 rows):")
-    for row in result['preview'][:3]:
-        print(f"  {row}")
+        print(f"✓ Read {result['rows']} rows")
+        print(f"✓ Columns: {', '.join(result['columns'])}")
+        print("\nPreview (first 3 rows):")
+        for row in result['preview'][:3]:
+            print(f"  {row}")
+    except FileNotFoundError:
+        print(f"Error: Excel file not found at {excel_path}")
+        return
+    except Exception as e:
+        print(f"Error reading Excel file: {e}")
+        return
 
     print("\n3. EXCEL TO CSV CONVERSION")
     print("-" * 60)
 
-    csv_path = Path(temp_dir) / "sales_data.csv"
-    result = excel_tool.excel_to_csv(str(excel_path), str(csv_path))
+    try:
+        csv_path = Path(temp_dir) / "sales_data.csv"
+        result = excel_tool.excel_to_csv(str(excel_path), str(csv_path))
 
-    print(f"✓ Converted Excel to CSV")
-    print(f"✓ Output: {result['output']}")
-    print(f"✓ Rows: {result['rows']}")
+        print(f"✓ Converted Excel to CSV")
+        print(f"✓ Output: {result['output']}")
+        print(f"✓ Rows: {result['rows']}")
+    except Exception as e:
+        print(f"Error converting Excel to CSV: {e}")
+        return
 
     print("\n4. READING CSV FILE")
     print("-" * 60)
 
-    result = csv_tool.read_csv(str(csv_path))
+    try:
+        result = csv_tool.read_csv(str(csv_path))
 
-    print(f"✓ Read {result['rows']} rows")
-    print(f"✓ Data types: {result['dtypes']}")
+        print(f"✓ Read {result['rows']} rows")
+        print(f"✓ Data types: {result['dtypes']}")
+    except FileNotFoundError:
+        print(f"Error: CSV file not found at {csv_path}")
+        return
+    except Exception as e:
+        print(f"Error reading CSV file: {e}")
+        return
 
     print("\n5. FILTERING CSV DATA")
     print("-" * 60)
 
-    filtered_path = Path(temp_dir) / "laptops_only.csv"
-    result = csv_tool.filter_csv(
-        str(csv_path),
-        column='product',
-        value='Laptop',
-        output_path=str(filtered_path)
-    )
+    try:
+        filtered_path = Path(temp_dir) / "laptops_only.csv"
+        result = csv_tool.filter_csv(
+            str(csv_path),
+            column='product',
+            value='Laptop',
+            output_path=str(filtered_path)
+        )
 
-    print(f"✓ Original rows: {result['original_rows']}")
-    print(f"✓ Filtered rows: {result['filtered_rows']}")
-    print(f"\nFiltered data:")
-    for row in result['data']:
-        print(f"  {row}")
+        print(f"✓ Original rows: {result['original_rows']}")
+        print(f"✓ Filtered rows: {result['filtered_rows']}")
+        print(f"\nFiltered data:")
+        for row in result['data']:
+            print(f"  {row}")
+    except Exception as e:
+        print(f"Error filtering CSV data: {e}")
 
     print("\n6. AGGREGATING CSV DATA")
     print("-" * 60)
@@ -139,28 +168,31 @@ def demo_excel_csv():
     print("\n8. MERGING MULTIPLE EXCEL FILES")
     print("-" * 60)
 
-    # Create additional data files
-    jan_data = [{"month": "Jan", "sales": 15000, "expenses": 8000}]
-    feb_data = [{"month": "Feb", "sales": 18000, "expenses": 9000}]
-    mar_data = [{"month": "Mar", "sales": 20000, "expenses": 9500}]
+    try:
+        # Create additional data files
+        jan_data = [{"month": "Jan", "sales": 15000, "expenses": 8000}]
+        feb_data = [{"month": "Feb", "sales": 18000, "expenses": 9000}]
+        mar_data = [{"month": "Mar", "sales": 20000, "expenses": 9500}]
 
-    jan_file = Path(temp_dir) / "jan.xlsx"
-    feb_file = Path(temp_dir) / "feb.xlsx"
-    mar_file = Path(temp_dir) / "mar.xlsx"
-    merged_file = Path(temp_dir) / "q1_summary.xlsx"
+        jan_file = Path(temp_dir) / "jan.xlsx"
+        feb_file = Path(temp_dir) / "feb.xlsx"
+        mar_file = Path(temp_dir) / "mar.xlsx"
+        merged_file = Path(temp_dir) / "q1_summary.xlsx"
 
-    excel_tool.write_excel(str(jan_file), jan_data)
-    excel_tool.write_excel(str(feb_file), feb_data)
-    excel_tool.write_excel(str(mar_file), mar_data)
+        excel_tool.write_excel(str(jan_file), jan_data)
+        excel_tool.write_excel(str(feb_file), feb_data)
+        excel_tool.write_excel(str(mar_file), mar_data)
 
-    result = excel_tool.merge_excel_files(
-        [str(jan_file), str(feb_file), str(mar_file)],
-        str(merged_file)
-    )
+        result = excel_tool.merge_excel_files(
+            [str(jan_file), str(feb_file), str(mar_file)],
+            str(merged_file)
+        )
 
-    print(f"✓ Merged {result['files_merged']} files")
-    print(f"✓ Total rows: {result['total_rows']}")
-    print(f"✓ Output: {result['output']}")
+        print(f"✓ Merged {result['files_merged']} files")
+        print(f"✓ Total rows: {result['total_rows']}")
+        print(f"✓ Output: {result['output']}")
+    except Exception as e:
+        print(f"Error merging Excel files: {e}")
 
     print("\n9. PRACTICAL USE CASE - SALES REPORT")
     print("-" * 60)

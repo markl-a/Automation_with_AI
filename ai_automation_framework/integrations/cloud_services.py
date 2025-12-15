@@ -82,13 +82,33 @@ class AzureStorage:
         Returns:
             Blob URL
         """
+        # Validate inputs
+        if not container_name or not container_name.strip():
+            raise ValueError("container_name cannot be empty")
+        if not blob_name or not blob_name.strip():
+            raise ValueError("blob_name cannot be empty")
+        if not file_path or not file_path.strip():
+            raise ValueError("file_path cannot be empty")
+
+        # Check file exists
+        if not os.path.exists(file_path):
+            raise FileNotFoundError(f"File not found: {file_path}")
+
+        if not os.path.isfile(file_path):
+            raise ValueError(f"Path is not a file: {file_path}")
+
         blob_client = self.blob_service_client.get_blob_client(
             container=container_name,
             blob=blob_name
         )
 
-        with open(file_path, "rb") as data:
-            blob_client.upload_blob(data, overwrite=overwrite)
+        try:
+            with open(file_path, "rb") as data:
+                blob_client.upload_blob(data, overwrite=overwrite)
+        except IOError as e:
+            raise IOError(f"Failed to read file {file_path}: {str(e)}")
+        except Exception as e:
+            raise Exception(f"Failed to upload file to Azure Blob Storage: {str(e)}")
 
         return blob_client.url
 
@@ -109,13 +129,26 @@ class AzureStorage:
         Returns:
             本地文件路徑
         """
+        # Validate inputs
+        if not container_name or not container_name.strip():
+            raise ValueError("container_name cannot be empty")
+        if not blob_name or not blob_name.strip():
+            raise ValueError("blob_name cannot be empty")
+        if not file_path or not file_path.strip():
+            raise ValueError("file_path cannot be empty")
+
         blob_client = self.blob_service_client.get_blob_client(
             container=container_name,
             blob=blob_name
         )
 
-        with open(file_path, "wb") as download_file:
-            download_file.write(blob_client.download_blob().readall())
+        try:
+            with open(file_path, "wb") as download_file:
+                download_file.write(blob_client.download_blob().readall())
+        except IOError as e:
+            raise IOError(f"Failed to write file {file_path}: {str(e)}")
+        except Exception as e:
+            raise Exception(f"Failed to download file from Azure Blob Storage: {str(e)}")
 
         return file_path
 
@@ -205,6 +238,14 @@ class AzureCosmos:
         Returns:
             項目數據
         """
+        # Validate inputs
+        if not container_name or not container_name.strip():
+            raise ValueError("container_name cannot be empty")
+        if not item_id or not item_id.strip():
+            raise ValueError("item_id cannot be empty")
+        if not partition_key or not partition_key.strip():
+            raise ValueError("partition_key cannot be empty")
+
         container = self.database.get_container_client(container_name)
         return container.read_item(item=item_id, partition_key=partition_key)
 
@@ -246,6 +287,14 @@ class AzureCosmos:
             item_id: 項目 ID
             partition_key: 分區鍵
         """
+        # Validate inputs
+        if not container_name or not container_name.strip():
+            raise ValueError("container_name cannot be empty")
+        if not item_id or not item_id.strip():
+            raise ValueError("item_id cannot be empty")
+        if not partition_key or not partition_key.strip():
+            raise ValueError("partition_key cannot be empty")
+
         container = self.database.get_container_client(container_name)
         container.delete_item(item=item_id, partition_key=partition_key)
 
@@ -312,7 +361,24 @@ class AliyunOSS:
         if not self.bucket:
             raise ValueError("請先設置 Bucket")
 
-        self.bucket.put_object_from_file(object_name, file_path)
+        # Validate inputs
+        if not object_name or not object_name.strip():
+            raise ValueError("object_name cannot be empty")
+        if not file_path or not file_path.strip():
+            raise ValueError("file_path cannot be empty")
+
+        # Check file exists
+        if not os.path.exists(file_path):
+            raise FileNotFoundError(f"File not found: {file_path}")
+
+        if not os.path.isfile(file_path):
+            raise ValueError(f"Path is not a file: {file_path}")
+
+        try:
+            self.bucket.put_object_from_file(object_name, file_path)
+        except Exception as e:
+            raise Exception(f"Failed to upload file to Aliyun OSS: {str(e)}")
+
         return f"https://{self.bucket_name}.{self.endpoint}/{object_name}"
 
     def download_file(
@@ -333,7 +399,19 @@ class AliyunOSS:
         if not self.bucket:
             raise ValueError("請先設置 Bucket")
 
-        self.bucket.get_object_to_file(object_name, file_path)
+        # Validate inputs
+        if not object_name or not object_name.strip():
+            raise ValueError("object_name cannot be empty")
+        if not file_path or not file_path.strip():
+            raise ValueError("file_path cannot be empty")
+
+        try:
+            self.bucket.get_object_to_file(object_name, file_path)
+        except IOError as e:
+            raise IOError(f"Failed to write file {file_path}: {str(e)}")
+        except Exception as e:
+            raise Exception(f"Failed to download file from Aliyun OSS: {str(e)}")
+
         return file_path
 
     def list_objects(self, prefix: str = "") -> List[str]:
@@ -364,7 +442,14 @@ class AliyunOSS:
         if not self.bucket:
             raise ValueError("請先設置 Bucket")
 
-        self.bucket.delete_object(object_name)
+        # Validate inputs
+        if not object_name or not object_name.strip():
+            raise ValueError("object_name cannot be empty")
+
+        try:
+            self.bucket.delete_object(object_name)
+        except Exception as e:
+            raise Exception(f"Failed to delete object from Aliyun OSS: {str(e)}")
 
 
 class AliyunClient:

@@ -7,10 +7,31 @@ import json
 from pathlib import Path
 import base64
 import io
+import os
+from urllib.parse import urlparse
 
 
 class ImageProcessingTool:
     """Tool for image processing and manipulation."""
+
+    @staticmethod
+    def _validate_image_path(image_path: str) -> Optional[str]:
+        """
+        Validate that image file exists.
+
+        Args:
+            image_path: Path to image file
+
+        Returns:
+            Error message if invalid, None if valid
+        """
+        if not image_path:
+            return "Image path cannot be empty"
+        if not os.path.exists(image_path):
+            return f"Image file not found: {image_path}"
+        if not os.path.isfile(image_path):
+            return f"Path is not a file: {image_path}"
+        return None
 
     @staticmethod
     def resize_image(
@@ -33,6 +54,11 @@ class ImageProcessingTool:
         Returns:
             Result dictionary
         """
+        # Validate input file exists
+        validation_error = ImageProcessingTool._validate_image_path(input_path)
+        if validation_error:
+            return {"success": False, "error": validation_error}
+
         try:
             img = Image.open(input_path)
             original_size = img.size
@@ -50,8 +76,14 @@ class ImageProcessingTool:
                 "new_size": img.size,
                 "output": output_path
             }
+        except FileNotFoundError as e:
+            return {"success": False, "error": f"File not found: {str(e)}"}
+        except PermissionError as e:
+            return {"success": False, "error": f"Permission denied: {str(e)}"}
+        except OSError as e:
+            return {"success": False, "error": f"Invalid image file or format: {str(e)}"}
         except Exception as e:
-            return {"success": False, "error": str(e)}
+            return {"success": False, "error": f"Image processing error: {str(e)}"}
 
     @staticmethod
     def convert_format(
@@ -60,6 +92,11 @@ class ImageProcessingTool:
         format: str = "PNG"
     ) -> Dict[str, Any]:
         """Convert image to different format."""
+        # Validate input file exists
+        validation_error = ImageProcessingTool._validate_image_path(input_path)
+        if validation_error:
+            return {"success": False, "error": validation_error}
+
         try:
             img = Image.open(input_path)
             img.save(output_path, format=format.upper())
@@ -70,8 +107,16 @@ class ImageProcessingTool:
                 "output": output_path,
                 "format": format
             }
+        except FileNotFoundError as e:
+            return {"success": False, "error": f"File not found: {str(e)}"}
+        except PermissionError as e:
+            return {"success": False, "error": f"Permission denied: {str(e)}"}
+        except OSError as e:
+            return {"success": False, "error": f"Invalid image file or format: {str(e)}"}
+        except ValueError as e:
+            return {"success": False, "error": f"Invalid format specified: {str(e)}"}
         except Exception as e:
-            return {"success": False, "error": str(e)}
+            return {"success": False, "error": f"Image processing error: {str(e)}"}
 
     @staticmethod
     def apply_filter(
@@ -90,6 +135,11 @@ class ImageProcessingTool:
         Returns:
             Result
         """
+        # Validate input file exists
+        validation_error = ImageProcessingTool._validate_image_path(input_path)
+        if validation_error:
+            return {"success": False, "error": validation_error}
+
         try:
             img = Image.open(input_path)
 
@@ -113,8 +163,14 @@ class ImageProcessingTool:
             else:
                 return {"success": False, "error": f"Unknown filter: {filter_type}"}
 
+        except FileNotFoundError as e:
+            return {"success": False, "error": f"File not found: {str(e)}"}
+        except PermissionError as e:
+            return {"success": False, "error": f"Permission denied: {str(e)}"}
+        except OSError as e:
+            return {"success": False, "error": f"Invalid image file or format: {str(e)}"}
         except Exception as e:
-            return {"success": False, "error": str(e)}
+            return {"success": False, "error": f"Image processing error: {str(e)}"}
 
     @staticmethod
     def adjust_brightness(
@@ -123,6 +179,11 @@ class ImageProcessingTool:
         factor: float = 1.5
     ) -> Dict[str, Any]:
         """Adjust image brightness (factor: 0.0 to 2.0)."""
+        # Validate input file exists
+        validation_error = ImageProcessingTool._validate_image_path(input_path)
+        if validation_error:
+            return {"success": False, "error": validation_error}
+
         try:
             img = Image.open(input_path)
             enhancer = ImageEnhance.Brightness(img)
@@ -134,8 +195,14 @@ class ImageProcessingTool:
                 "brightness_factor": factor,
                 "output": output_path
             }
+        except FileNotFoundError as e:
+            return {"success": False, "error": f"File not found: {str(e)}"}
+        except PermissionError as e:
+            return {"success": False, "error": f"Permission denied: {str(e)}"}
+        except OSError as e:
+            return {"success": False, "error": f"Invalid image file or format: {str(e)}"}
         except Exception as e:
-            return {"success": False, "error": str(e)}
+            return {"success": False, "error": f"Image processing error: {str(e)}"}
 
     @staticmethod
     def create_thumbnail(
@@ -144,6 +211,11 @@ class ImageProcessingTool:
         size: tuple = (128, 128)
     ) -> Dict[str, Any]:
         """Create image thumbnail."""
+        # Validate input file exists
+        validation_error = ImageProcessingTool._validate_image_path(input_path)
+        if validation_error:
+            return {"success": False, "error": validation_error}
+
         try:
             img = Image.open(input_path)
             img.thumbnail(size, Image.Resampling.LANCZOS)
@@ -154,12 +226,23 @@ class ImageProcessingTool:
                 "thumbnail_size": img.size,
                 "output": output_path
             }
+        except FileNotFoundError as e:
+            return {"success": False, "error": f"File not found: {str(e)}"}
+        except PermissionError as e:
+            return {"success": False, "error": f"Permission denied: {str(e)}"}
+        except OSError as e:
+            return {"success": False, "error": f"Invalid image file or format: {str(e)}"}
         except Exception as e:
-            return {"success": False, "error": str(e)}
+            return {"success": False, "error": f"Image processing error: {str(e)}"}
 
     @staticmethod
     def get_image_info(image_path: str) -> Dict[str, Any]:
         """Get image metadata."""
+        # Validate input file exists
+        validation_error = ImageProcessingTool._validate_image_path(image_path)
+        if validation_error:
+            return {"success": False, "error": validation_error}
+
         try:
             img = Image.open(image_path)
 
@@ -171,8 +254,14 @@ class ImageProcessingTool:
                 "width": img.width,
                 "height": img.height
             }
+        except FileNotFoundError as e:
+            return {"success": False, "error": f"File not found: {str(e)}"}
+        except PermissionError as e:
+            return {"success": False, "error": f"Permission denied: {str(e)}"}
+        except OSError as e:
+            return {"success": False, "error": f"Invalid image file or format: {str(e)}"}
         except Exception as e:
-            return {"success": False, "error": str(e)}
+            return {"success": False, "error": f"Image processing error: {str(e)}"}
 
 
 class OCRTool:
@@ -189,6 +278,14 @@ class OCRTool:
         Returns:
             Extracted text
         """
+        # Validate input file exists
+        if not image_path:
+            return {"success": False, "error": "Image path cannot be empty"}
+        if not os.path.exists(image_path):
+            return {"success": False, "error": f"Image file not found: {image_path}"}
+        if not os.path.isfile(image_path):
+            return {"success": False, "error": f"Path is not a file: {image_path}"}
+
         try:
             import pytesseract
 
@@ -206,8 +303,14 @@ class OCRTool:
                 "success": False,
                 "error": "pytesseract not installed. Install with: pip install pytesseract"
             }
+        except FileNotFoundError as e:
+            return {"success": False, "error": f"File not found: {str(e)}"}
+        except PermissionError as e:
+            return {"success": False, "error": f"Permission denied: {str(e)}"}
+        except OSError as e:
+            return {"success": False, "error": f"Invalid image file or format: {str(e)}"}
         except Exception as e:
-            return {"success": False, "error": str(e)}
+            return {"success": False, "error": f"OCR processing error: {str(e)}"}
 
     @staticmethod
     def extract_text_from_pdf(pdf_path: str, page_num: int = 0) -> Dict[str, Any]:
@@ -235,6 +338,30 @@ class OCRTool:
 class SlackTool:
     """Slack integration tool."""
 
+    @staticmethod
+    def _validate_webhook_url(url: str) -> Optional[str]:
+        """
+        Validate webhook URL format.
+
+        Args:
+            url: URL to validate
+
+        Returns:
+            Error message if invalid, None if valid
+        """
+        if not url:
+            return "Webhook URL cannot be empty"
+
+        try:
+            result = urlparse(url)
+            if not all([result.scheme, result.netloc]):
+                return f"Invalid URL format: {url}"
+            if result.scheme not in ['http', 'https']:
+                return f"URL must use http or https scheme: {url}"
+            return None
+        except Exception as e:
+            return f"Invalid URL: {str(e)}"
+
     def __init__(self, webhook_url: str = None, token: str = None):
         """
         Initialize Slack tool.
@@ -243,6 +370,12 @@ class SlackTool:
             webhook_url: Slack webhook URL
             token: Slack bot token
         """
+        # Validate webhook URL if provided
+        if webhook_url:
+            validation_error = self._validate_webhook_url(webhook_url)
+            if validation_error:
+                raise ValueError(f"Invalid webhook URL: {validation_error}")
+
         self.webhook_url = webhook_url
         self.token = token
 
@@ -298,8 +431,10 @@ class SlackTool:
             else:
                 return {"success": False, "error": "No webhook URL or token provided"}
 
+        except requests.exceptions.RequestException as e:
+            return {"success": False, "error": f"HTTP request failed: {str(e)}"}
         except Exception as e:
-            return {"success": False, "error": str(e)}
+            return {"success": False, "error": f"Slack messaging error: {str(e)}"}
 
     def upload_file(
         self,
@@ -311,6 +446,14 @@ class SlackTool:
         try:
             if not self.token:
                 return {"success": False, "error": "Token required for file upload"}
+
+            # Validate file exists
+            if not file_path:
+                return {"success": False, "error": "File path cannot be empty"}
+            if not os.path.exists(file_path):
+                return {"success": False, "error": f"File not found: {file_path}"}
+            if not os.path.isfile(file_path):
+                return {"success": False, "error": f"Path is not a file: {file_path}"}
 
             headers = {"Authorization": f"Bearer {self.token}"}
 
@@ -334,12 +477,42 @@ class SlackTool:
                     "response": response.json()
                 }
 
+        except FileNotFoundError as e:
+            return {"success": False, "error": f"File not found: {str(e)}"}
+        except PermissionError as e:
+            return {"success": False, "error": f"Permission denied: {str(e)}"}
+        except requests.exceptions.RequestException as e:
+            return {"success": False, "error": f"HTTP request failed: {str(e)}"}
         except Exception as e:
-            return {"success": False, "error": str(e)}
+            return {"success": False, "error": f"File upload error: {str(e)}"}
 
 
 class DiscordTool:
     """Discord integration tool."""
+
+    @staticmethod
+    def _validate_webhook_url(url: str) -> Optional[str]:
+        """
+        Validate webhook URL format.
+
+        Args:
+            url: URL to validate
+
+        Returns:
+            Error message if invalid, None if valid
+        """
+        if not url:
+            return "Webhook URL cannot be empty"
+
+        try:
+            result = urlparse(url)
+            if not all([result.scheme, result.netloc]):
+                return f"Invalid URL format: {url}"
+            if result.scheme not in ['http', 'https']:
+                return f"URL must use http or https scheme: {url}"
+            return None
+        except Exception as e:
+            return f"Invalid URL: {str(e)}"
 
     def __init__(self, webhook_url: str = None):
         """
@@ -348,6 +521,12 @@ class DiscordTool:
         Args:
             webhook_url: Discord webhook URL
         """
+        # Validate webhook URL if provided
+        if webhook_url:
+            validation_error = self._validate_webhook_url(webhook_url)
+            if validation_error:
+                raise ValueError(f"Invalid webhook URL: {validation_error}")
+
         self.webhook_url = webhook_url
 
     def send_message(
@@ -367,6 +546,10 @@ class DiscordTool:
         Returns:
             Result
         """
+        # Validate webhook URL is set
+        if not self.webhook_url:
+            return {"success": False, "error": "Webhook URL not configured"}
+
         try:
             payload = {
                 "content": content,
@@ -385,8 +568,10 @@ class DiscordTool:
                 "status_code": response.status_code
             }
 
+        except requests.exceptions.RequestException as e:
+            return {"success": False, "error": f"HTTP request failed: {str(e)}"}
         except Exception as e:
-            return {"success": False, "error": str(e)}
+            return {"success": False, "error": f"Discord messaging error: {str(e)}"}
 
     def send_embed(
         self,
@@ -396,6 +581,10 @@ class DiscordTool:
         fields: List[Dict[str, str]] = None
     ) -> Dict[str, Any]:
         """Send embed message to Discord."""
+        # Validate webhook URL is set
+        if not self.webhook_url:
+            return {"success": False, "error": "Webhook URL not configured"}
+
         try:
             embed = {
                 "title": title,
@@ -416,8 +605,10 @@ class DiscordTool:
                 "message": "Embed sent to Discord"
             }
 
+        except requests.exceptions.RequestException as e:
+            return {"success": False, "error": f"HTTP request failed: {str(e)}"}
         except Exception as e:
-            return {"success": False, "error": str(e)}
+            return {"success": False, "error": f"Discord messaging error: {str(e)}"}
 
 
 # Tool schemas
