@@ -95,6 +95,11 @@ class PrefectIntegration:
                     'flow_run_name': flow_run.name,
                     'state': flow_run.state.type.value if flow_run.state else None
                 }
+        except ConnectionError as e:
+            return {
+                'success': False,
+                'error': f'Failed to connect to Prefect server: {str(e)}'
+            }
         except Exception as e:
             return {
                 'success': False,
@@ -126,6 +131,11 @@ class PrefectIntegration:
                         'total_run_time': flow_run.total_run_time
                     }
                 }
+        except ValueError as e:
+            return {
+                'success': False,
+                'error': f'Invalid flow run ID: {str(e)}'
+            }
         except Exception as e:
             return {
                 'success': False,
@@ -189,9 +199,13 @@ class PrefectIntegration:
         """
         try:
             async with get_client() as client:
+                # Use the proper cancel_flow_run method instead of deprecated set_flow_run_state
+                from prefect.client.schemas.states import Cancelled
+
+                flow_run = await client.read_flow_run(flow_run_id)
                 await client.set_flow_run_state(
                     flow_run_id,
-                    state={"type": "CANCELLED"}
+                    state=Cancelled(message="Cancelled by user")
                 )
 
                 return {
@@ -201,7 +215,8 @@ class PrefectIntegration:
         except Exception as e:
             return {
                 'success': False,
-                'error': str(e)
+                'error': str(e),
+                'flow_run_id': flow_run_id
             }
 
     async def get_flow_run_logs(
@@ -245,6 +260,30 @@ class PrefectIntegration:
                 'error': str(e)
             }
 
+    def create_flow(self, **kwargs):
+        """
+        創建流程裝飾器（實例方法）
+
+        Args:
+            **kwargs: 傳遞給 Prefect flow 的參數
+
+        Returns:
+            Prefect flow 裝飾器
+        """
+        return self.create_flow_decorator(**kwargs)
+
+    def create_task(self, **kwargs):
+        """
+        創建任務裝飾器（實例方法）
+
+        Args:
+            **kwargs: 傳遞給 Prefect task 的參數
+
+        Returns:
+            Prefect task 裝飾器
+        """
+        return self.create_task_decorator(**kwargs)
+
     @staticmethod
     def create_flow_decorator(**kwargs):
         """創建流程裝飾器"""
@@ -284,20 +323,61 @@ if HAS_PREFECT:
 class PrefectFlowBuilder:
     """Prefect 流程構建器"""
 
-    def __init__(self, name: str):
+    def __init__(self, name: str = ""):
         """
         初始化構建器
 
         Args:
-            name: 流程名稱
+            name: 流程名稱（可選）
         """
         if not HAS_PREFECT:
             raise ImportError("需要安裝 Prefect")
 
         self.name = name
         self.tasks = []
+        self.flows = []
         self.description = ""
         self.tags = []
+
+    def register_task(self, **kwargs):
+        """
+        註冊任務裝飾器
+
+        Args:
+            **kwargs: 任務參數（例如 name, retries, retry_delay_seconds）
+
+        Returns:
+            裝飾器函數
+        """
+        def decorator(func):
+            if not HAS_PREFECT:
+                raise ImportError("需要安裝 Prefect")
+
+            # 使用 Prefect 的 task 裝飾器
+            task_func = task(**kwargs)(func)
+            self.tasks.append((task_func, kwargs))
+            return task_func
+        return decorator
+
+    def register_flow(self, **kwargs):
+        """
+        註冊流程裝飾器
+
+        Args:
+            **kwargs: 流程參數（例如 name）
+
+        Returns:
+            裝飾器函數
+        """
+        def decorator(func):
+            if not HAS_PREFECT:
+                raise ImportError("需要安裝 Prefect")
+
+            # 使用 Prefect 的 flow 裝飾器
+            flow_func = flow(**kwargs)(func)
+            self.flows.append(flow_func)
+            return flow_func
+        return decorator
 
     def add_task(self, task_func: Callable, **kwargs):
         """

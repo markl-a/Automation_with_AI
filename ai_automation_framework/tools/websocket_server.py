@@ -7,6 +7,7 @@ WebSocket Real-time Communication Tools
 
 import asyncio
 import json
+import inspect
 from typing import Dict, Set, Callable, Any, Optional
 from datetime import datetime
 
@@ -21,6 +22,10 @@ except ImportError:
 
 class WebSocketServer:
     """WebSocket 服務器"""
+
+    # Security constants
+    MAX_MESSAGE_SIZE = 1024 * 1024  # 1MB max message size
+    OPERATION_TIMEOUT = 30  # 30 seconds timeout for WebSocket operations
 
     def __init__(self, host: str = "0.0.0.0", port: int = 8765):
         """
@@ -47,6 +52,9 @@ class WebSocketServer:
             message_type: 消息類型
         """
         def decorator(func: Callable):
+            # Validate that handler is an async function
+            if not inspect.iscoroutinefunction(func):
+                raise TypeError(f"Handler for '{message_type}' must be an async function")
             self.message_handlers[message_type] = func
             return func
         return decorator
@@ -65,9 +73,19 @@ class WebSocketServer:
 
         try:
             async for message in websocket:
+                # Validate message size
+                if len(message) > self.MAX_MESSAGE_SIZE:
+                    await self.send_to_client(websocket, {
+                        'type': 'error',
+                        'payload': {'message': f'Message too large. Maximum size: {self.MAX_MESSAGE_SIZE} bytes'}
+                    })
+                    continue
+
                 await self.process_message(websocket, message)
         except websockets.exceptions.ConnectionClosed:
             print(f"❌ 客戶端斷開連接: {websocket.remote_address}")
+        except asyncio.TimeoutError:
+            print(f"⏱️ 客戶端連接超時: {websocket.remote_address}")
         finally:
             # 移除客戶端
             self.clients.remove(websocket)
@@ -125,7 +143,12 @@ class WebSocketServer:
             message: 消息字典
         """
         try:
-            await websocket.send(json.dumps(message))
+            await asyncio.wait_for(
+                websocket.send(json.dumps(message)),
+                timeout=self.OPERATION_TIMEOUT
+            )
+        except asyncio.TimeoutError:
+            print(f"發送消息超時: {websocket.remote_address}")
         except Exception as e:
             print(f"發送消息失敗: {e}")
 
@@ -139,7 +162,10 @@ class WebSocketServer:
         """
         message_json = json.dumps(message)
         tasks = [
-            client.send(message_json)
+            asyncio.wait_for(
+                client.send(message_json),
+                timeout=self.OPERATION_TIMEOUT
+            )
             for client in self.clients
             if client != exclude
         ]
@@ -159,7 +185,10 @@ class WebSocketServer:
 
         message_json = json.dumps(message)
         tasks = [
-            client.send(message_json)
+            asyncio.wait_for(
+                client.send(message_json),
+                timeout=self.OPERATION_TIMEOUT
+            )
             for client in self.rooms[room]
         ]
         if tasks:
@@ -190,13 +219,23 @@ class WebSocketServer:
 
     async def start(self):
         """啟動 WebSocket 服務器"""
-        async with websockets.serve(self.handle_client, self.host, self.port):
+        async with websockets.serve(
+            self.handle_client,
+            self.host,
+            self.port,
+            max_size=self.MAX_MESSAGE_SIZE,
+            ping_timeout=self.OPERATION_TIMEOUT
+        ):
             print(f"🚀 WebSocket 服務器啟動: ws://{self.host}:{self.port}")
             await asyncio.Future()  # 運行永久
 
 
 class WebSocketClient:
     """WebSocket 客戶端"""
+
+    # Security constants
+    MAX_MESSAGE_SIZE = 1024 * 1024  # 1MB max message size
+    OPERATION_TIMEOUT = 30  # 30 seconds timeout for WebSocket operations
 
     def __init__(self, uri: str):
         """
@@ -220,13 +259,23 @@ class WebSocketClient:
             message_type: 消息類型
         """
         def decorator(func: Callable):
+            # Validate that handler is an async function
+            if not inspect.iscoroutinefunction(func):
+                raise TypeError(f"Handler for '{message_type}' must be an async function")
             self.message_handlers[message_type] = func
             return func
         return decorator
 
     async def connect(self):
         """連接到 WebSocket 服務器"""
-        self.websocket = await websockets.connect(self.uri)
+        self.websocket = await asyncio.wait_for(
+            websockets.connect(
+                self.uri,
+                max_size=self.MAX_MESSAGE_SIZE,
+                ping_timeout=self.OPERATION_TIMEOUT
+            ),
+            timeout=self.OPERATION_TIMEOUT
+        )
         print(f"✅ 已連接到服務器: {self.uri}")
 
     async def send(self, message_type: str, payload: Dict[str, Any]):
@@ -245,7 +294,16 @@ class WebSocketClient:
             'payload': payload,
             'timestamp': datetime.now().isoformat()
         }
-        await self.websocket.send(json.dumps(message))
+        message_json = json.dumps(message)
+
+        # Validate message size
+        if len(message_json) > self.MAX_MESSAGE_SIZE:
+            raise ValueError(f"Message too large. Maximum size: {self.MAX_MESSAGE_SIZE} bytes")
+
+        await asyncio.wait_for(
+            self.websocket.send(message_json),
+            timeout=self.OPERATION_TIMEOUT
+        )
 
     async def receive(self):
         """接收並處理消息"""
@@ -254,6 +312,11 @@ class WebSocketClient:
 
         async for message in self.websocket:
             try:
+                # Validate message size
+                if len(message) > self.MAX_MESSAGE_SIZE:
+                    print(f"接收到的消息過大，已忽略。最大大小: {self.MAX_MESSAGE_SIZE} 字節")
+                    continue
+
                 data = json.loads(message)
                 message_type = data.get('type', 'unknown')
                 payload = data.get('payload', {})
@@ -273,7 +336,10 @@ class WebSocketClient:
     async def close(self):
         """關閉連接"""
         if self.websocket:
-            await self.websocket.close()
+            await asyncio.wait_for(
+                self.websocket.close(),
+                timeout=self.OPERATION_TIMEOUT
+            )
             print("❌ 已斷開連接")
 
 

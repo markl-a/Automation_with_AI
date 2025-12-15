@@ -8,7 +8,7 @@ Enhanced Zapier Integration
 import os
 import requests
 import json
-from typing import Dict, Any, List, Optional
+from typing import Dict, Any, List, Optional, Callable
 from datetime import datetime
 
 
@@ -79,7 +79,7 @@ class ZapierEnhanced:
                 'zap_request_id': response.headers.get('X-Zapier-Request-Id'),
                 'data_sent': data
             }
-        except Exception as e:
+        except requests.exceptions.RequestException as e:
             return {
                 'success': False,
                 'error': str(e)
@@ -340,7 +340,7 @@ class ZapierEnhanced:
                 'success': True,
                 'zaps': response.json()
             }
-        except Exception as e:
+        except requests.exceptions.RequestException as e:
             return {
                 'success': False,
                 'error': str(e)
@@ -381,7 +381,7 @@ class ZapierEnhanced:
                 'success': True,
                 'history': response.json()
             }
-        except Exception as e:
+        except requests.exceptions.RequestException as e:
             return {
                 'success': False,
                 'error': str(e)
@@ -458,7 +458,7 @@ class ZapierWebhookServer:
     def register_handler(
         self,
         action_type: str,
-        handler: callable
+        handler: Callable
     ):
         """
         註冊動作處理器

@@ -27,8 +27,15 @@ class MultiAgentSystem(BaseComponent):
             **kwargs: Additional configuration
         """
         super().__init__(name=name, **kwargs)
-        self.agents = agents or {}
+        self.agents = {}
         self.conversation_history: List[Dict[str, Any]] = []
+
+        # Validate and add agents
+        if agents:
+            for agent_name, agent in agents.items():
+                if not isinstance(agent, BaseAgent):
+                    raise TypeError(f"Agent '{agent_name}' must be an instance of BaseAgent, got {type(agent).__name__}")
+                self.agents[agent_name] = agent
 
     def _initialize(self) -> None:
         """Initialize the system."""
@@ -44,6 +51,8 @@ class MultiAgentSystem(BaseComponent):
             name: Agent name
             agent: Agent instance
         """
+        if not isinstance(agent, BaseAgent):
+            raise TypeError(f"Agent must be an instance of BaseAgent, got {type(agent).__name__}")
         self.agents[name] = agent
         self.logger.info(f"Registered agent: {name}")
 
@@ -76,6 +85,9 @@ class MultiAgentSystem(BaseComponent):
         Returns:
             Results from each agent
         """
+        if not agent_sequence:
+            raise ValueError("agent_sequence cannot be empty")
+
         self.initialize()
 
         results = {}
@@ -87,7 +99,11 @@ class MultiAgentSystem(BaseComponent):
             agent = self.get_agent(agent_name)
             self.logger.info(f"Executing with agent: {agent_name}")
 
-            result = agent.run(current_input)
+            try:
+                result = agent.run(current_input)
+            except Exception as e:
+                self.logger.error(f"Agent {agent_name} failed: {e}")
+                result = {"error": str(e), "agent": agent_name}
 
             results[agent_name] = result
             self.conversation_history.append({
@@ -121,6 +137,9 @@ class MultiAgentSystem(BaseComponent):
         Returns:
             Execution results
         """
+        if not worker_agents:
+            raise ValueError("worker_agents cannot be empty")
+
         self.initialize()
 
         coordinator = self.get_agent(coordinator_agent)
@@ -136,8 +155,12 @@ class MultiAgentSystem(BaseComponent):
         For each worker, describe what they should do.
         """
 
-        plan = coordinator.chat(planning_prompt)
-        self.logger.info(f"Coordinator created plan")
+        try:
+            plan = coordinator.chat(planning_prompt)
+            self.logger.info(f"Coordinator created plan")
+        except Exception as e:
+            self.logger.error(f"Coordinator planning failed: {e}")
+            raise
 
         # Execute with workers
         worker_results = {}
@@ -152,7 +175,11 @@ class MultiAgentSystem(BaseComponent):
             Your role as {worker_name}: Execute your part of the plan.
             """
 
-            result = worker.run(worker_task)
+            try:
+                result = worker.run(worker_task)
+            except Exception as e:
+                self.logger.error(f"Worker {worker_name} failed: {e}")
+                result = {"error": str(e), "agent": worker_name}
             worker_results[worker_name] = result
 
             self.conversation_history.append({

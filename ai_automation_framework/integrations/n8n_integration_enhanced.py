@@ -130,7 +130,7 @@ class N8NEnhanced:
                 'status_code': response.status_code,
                 'response': response.json() if response.text else None
             }
-        except Exception as e:
+        except requests.exceptions.RequestException as e:
             return {
                 'success': False,
                 'error': str(e)
@@ -156,7 +156,7 @@ class N8NEnhanced:
                 'success': True,
                 'response': response.json() if response.text else None
             }
-        except Exception as e:
+        except requests.exceptions.RequestException as e:
             return {
                 'success': False,
                 'error': str(e)

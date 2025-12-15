@@ -114,11 +114,23 @@ class ToolAgent(BaseAgent):
             )
 
             # Check if we need to call tools
-            if hasattr(response, 'tool_calls') and response.tool_calls:
+            if response is not None and getattr(response, 'tool_calls', None):
                 # Process tool calls
                 for tool_call in response.tool_calls:
+                    # Validate tool_call structure
+                    if not hasattr(tool_call, 'function'):
+                        self.logger.warning(f"Invalid tool_call structure: missing 'function' attribute")
+                        continue
+                    if not hasattr(tool_call.function, 'name') or not hasattr(tool_call.function, 'arguments'):
+                        self.logger.warning(f"Invalid tool_call.function structure: missing attributes")
+                        continue
+
                     tool_name = tool_call.function.name
-                    arguments = json.loads(tool_call.function.arguments)
+                    try:
+                        arguments = json.loads(tool_call.function.arguments)
+                    except json.JSONDecodeError as e:
+                        self.logger.error(f"Failed to parse tool arguments for {tool_name}: {e}")
+                        continue
 
                     # Execute tool
                     tool_result = self.execute_tool(tool_name, arguments)

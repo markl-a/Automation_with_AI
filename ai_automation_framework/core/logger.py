@@ -2,7 +2,7 @@
 
 import sys
 from pathlib import Path
-from typing import Optional
+from typing import Optional, Any
 from loguru import logger
 from ai_automation_framework.core.config import get_config
 
@@ -48,7 +48,7 @@ def setup_logger(
         )
 
 
-def get_logger(name: Optional[str] = None):
+def get_logger(name: Optional[str] = None) -> Any:
     """
     Get a logger instance.
 

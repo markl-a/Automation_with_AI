@@ -3,6 +3,7 @@
 import pytest
 from unittest.mock import Mock, patch, MagicMock
 import time
+from ai_automation_framework.tools.scheduler_and_testing import TaskScheduler, APITestingTool
 
 
 class TestTaskScheduler:
@@ -10,16 +11,12 @@ class TestTaskScheduler:
 
     def test_initialization(self):
         """Test scheduler initialization."""
-        from ai_automation_framework.tools.scheduler_and_testing import TaskScheduler
-
         scheduler = TaskScheduler()
         assert scheduler.jobs == []
         assert scheduler.running is False
 
     def test_schedule_task(self):
         """Test scheduling a task."""
-        from ai_automation_framework.tools.scheduler_and_testing import TaskScheduler
-
         scheduler = TaskScheduler()
         task_executed = []
 
@@ -37,8 +34,6 @@ class TestTaskScheduler:
 
     def test_schedule_different_types(self):
         """Test scheduling with different schedule types."""
-        from ai_automation_framework.tools.scheduler_and_testing import TaskScheduler
-
         scheduler = TaskScheduler()
 
         def dummy_task():
@@ -55,8 +50,6 @@ class TestTaskScheduler:
 
     def test_invalid_schedule_type(self):
         """Test invalid schedule type."""
-        from ai_automation_framework.tools.scheduler_and_testing import TaskScheduler
-
         scheduler = TaskScheduler()
 
         result = scheduler.schedule_task(
@@ -66,12 +59,11 @@ class TestTaskScheduler:
         )
 
         assert result["success"] is False
+        assert "error" in result
         assert "Unknown schedule type" in result["error"]
 
     def test_start_stop_scheduler(self):
         """Test starting and stopping scheduler."""
-        from ai_automation_framework.tools.scheduler_and_testing import TaskScheduler
-
         scheduler = TaskScheduler()
 
         start_result = scheduler.start()
@@ -92,15 +84,11 @@ class TestAPITestingTool:
 
     def test_initialization(self):
         """Test tool initialization."""
-        from ai_automation_framework.tools.scheduler_and_testing import APITestingTool
-
         tool = APITestingTool(base_url="https://api.example.com")
         assert tool.base_url == "https://api.example.com"
 
     def test_get_request_mock(self, mock_http_response):
         """Test GET request with mock."""
-        from ai_automation_framework.tools.scheduler_and_testing import APITestingTool
-
         tool = APITestingTool(base_url="https://api.example.com")
         result = tool.get("/users")
 
@@ -109,8 +97,6 @@ class TestAPITestingTool:
 
     def test_post_request_mock(self, mock_http_response):
         """Test POST request with mock."""
-        from ai_automation_framework.tools.scheduler_and_testing import APITestingTool
-
         tool = APITestingTool(base_url="https://api.example.com")
         result = tool.post("/users", data={"name": "Test"})
 
@@ -119,8 +105,6 @@ class TestAPITestingTool:
 
     def test_test_endpoint_mock(self, mock_http_response):
         """Test endpoint testing with mock."""
-        from ai_automation_framework.tools.scheduler_and_testing import APITestingTool
-
         tool = APITestingTool(base_url="https://api.example.com")
         result = tool.test_endpoint(
             endpoint="/users",
@@ -133,8 +117,6 @@ class TestAPITestingTool:
 
     def test_load_test_mock(self, mock_http_response):
         """Test load testing with mock."""
-        from ai_automation_framework.tools.scheduler_and_testing import APITestingTool
-
         tool = APITestingTool(base_url="https://api.example.com")
 
         # Run a small load test

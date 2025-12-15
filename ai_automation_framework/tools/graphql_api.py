@@ -5,6 +5,7 @@ GraphQL API Support
 提供 GraphQL 服務器和客戶端功能。
 """
 
+import re
 from typing import Dict, Any, List, Optional, Callable
 from datetime import datetime
 
@@ -240,6 +241,10 @@ class GraphQLServer:
 class GraphQLClient:
     """GraphQL 客戶端"""
 
+    # Security constants
+    REQUEST_TIMEOUT = 30  # 30 seconds timeout for HTTP requests
+    MAX_QUERY_LENGTH = 10000  # Maximum query length in characters
+
     def __init__(self, endpoint: str):
         """
         初始化 GraphQL 客戶端
@@ -248,6 +253,37 @@ class GraphQLClient:
             endpoint: GraphQL API 端點
         """
         self.endpoint = endpoint
+
+    def _validate_query(self, query: str) -> None:
+        """
+        驗證 GraphQL 查詢
+
+        Args:
+            query: GraphQL 查詢字符串
+
+        Raises:
+            ValueError: 如果查詢無效
+        """
+        if not query or not isinstance(query, str):
+            raise ValueError("Query must be a non-empty string")
+
+        if len(query) > self.MAX_QUERY_LENGTH:
+            raise ValueError(f"Query too long. Maximum length: {self.MAX_QUERY_LENGTH} characters")
+
+        # Check for basic GraphQL syntax
+        if not any(keyword in query for keyword in ['query', 'mutation', 'subscription', '{']):
+            raise ValueError("Invalid GraphQL query format")
+
+        # Prevent potential injection attacks - check for suspicious patterns
+        suspicious_patterns = [
+            r'__schema',  # Introspection (might be okay, but flag it)
+            r'system\s*\(',  # System calls
+            r'eval\s*\(',  # Eval calls
+        ]
+
+        for pattern in suspicious_patterns:
+            if re.search(pattern, query, re.IGNORECASE):
+                print(f"Warning: Query contains potentially suspicious pattern: {pattern}")
 
     def execute(
         self,
@@ -265,21 +301,49 @@ class GraphQLClient:
 
         Returns:
             查詢結果
+
+        Raises:
+            ValueError: 如果查詢無效或響應格式錯誤
         """
         import requests
+
+        # Validate query before sending
+        self._validate_query(query)
 
         payload = {'query': query}
         if variables:
             payload['variables'] = variables
 
-        response = requests.post(
-            self.endpoint,
-            json=payload,
-            headers=headers or {}
-        )
-        response.raise_for_status()
+        try:
+            response = requests.post(
+                self.endpoint,
+                json=payload,
+                headers=headers or {},
+                timeout=self.REQUEST_TIMEOUT
+            )
+            response.raise_for_status()
 
-        return response.json()
+            # Validate response content type before parsing JSON
+            content_type = response.headers.get('Content-Type', '')
+            if 'application/json' not in content_type:
+                raise ValueError(f"Invalid response content type: {content_type}. Expected application/json")
+
+            # Safely parse JSON response
+            try:
+                result = response.json()
+            except ValueError as e:
+                raise ValueError(f"Failed to parse JSON response: {e}")
+
+            # Validate response structure
+            if not isinstance(result, dict):
+                raise ValueError("Response must be a JSON object")
+
+            return result
+
+        except requests.Timeout:
+            raise TimeoutError(f"Request timed out after {self.REQUEST_TIMEOUT} seconds")
+        except requests.RequestException as e:
+            raise RuntimeError(f"Request failed: {e}")
 
     def query_user(self, user_id: str) -> Dict[str, Any]:
         """

@@ -31,9 +31,8 @@ async def example_basic_workflow():
 
     # 初始化 Temporal 集成
     temporal = TemporalIntegration(
-        host="localhost",
-        namespace="default",
-        task_queue="ai-automation"
+        server_url="localhost:7233",
+        namespace="default"
     )
 
     # 連接到 Temporal
@@ -149,7 +148,7 @@ async def example_workflow_builder():
     await temporal.connect()
 
     # 創建構建器
-    builder = TemporalWorkflowBuilder(temporal.client)
+    builder = TemporalWorkflowBuilder()
 
     # 註冊 activities
     @builder.register_activity(name="send_email")

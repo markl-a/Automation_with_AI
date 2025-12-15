@@ -150,59 +150,81 @@ class ResponseCache:
 
     def _cleanup_if_needed(self) -> None:
         """Cleanup old entries if cache size exceeds limit."""
-        total_size = sum(
-            f.stat().st_size
-            for f in self.cache_dir.glob("*.json")
-        )
+        try:
+            total_size = sum(
+                f.stat().st_size
+                for f in self.cache_dir.glob("*.json")
+            )
 
-        if total_size <= self.max_size_bytes:
-            return
+            if total_size <= self.max_size_bytes:
+                return
 
-        logger.info(f"Cache size ({total_size / 1024 / 1024:.2f} MB) exceeds limit, cleaning up...")
+            logger.info(f"Cache size ({total_size / 1024 / 1024:.2f} MB) exceeds limit, cleaning up...")
 
-        # Get all cache files sorted by modification time
-        cache_files = sorted(
-            self.cache_dir.glob("*.json"),
-            key=lambda f: f.stat().st_mtime
-        )
+            # Get all cache files sorted by modification time
+            cache_files = sorted(
+                self.cache_dir.glob("*.json"),
+                key=lambda f: f.stat().st_mtime
+            )
 
-        # Remove oldest files until under limit
-        current_size = total_size
-        removed = 0
+            # Remove oldest files until under limit
+            current_size = total_size
+            removed = 0
 
-        for cache_file in cache_files:
-            if current_size <= self.max_size_bytes:
-                break
+            for cache_file in cache_files:
+                if current_size <= self.max_size_bytes:
+                    break
 
-            file_size = cache_file.stat().st_size
-            cache_file.unlink()
-            current_size -= file_size
-            removed += 1
+                try:
+                    file_size = cache_file.stat().st_size
+                    cache_file.unlink()
+                    current_size -= file_size
+                    removed += 1
+                except Exception as e:
+                    logger.warning(f"Failed to remove cache file {cache_file}: {e}")
 
-        logger.info(f"Removed {removed} old cache entries")
+            logger.info(f"Removed {removed} old cache entries")
+        except Exception as e:
+            logger.error(f"Error during cache cleanup: {e}")
 
     def clear(self) -> None:
         """Clear all cache entries."""
         count = 0
-        for cache_file in self.cache_dir.glob("*.json"):
-            cache_file.unlink()
-            count += 1
+        try:
+            for cache_file in self.cache_dir.glob("*.json"):
+                try:
+                    cache_file.unlink()
+                    count += 1
+                except Exception as e:
+                    logger.warning(f"Failed to delete cache file {cache_file}: {e}")
 
-        logger.info(f"Cleared {count} cache entries")
+            logger.info(f"Cleared {count} cache entries")
+        except Exception as e:
+            logger.error(f"Error clearing cache: {e}")
 
     def get_stats(self) -> Dict[str, Any]:
         """Get cache statistics."""
-        cache_files = list(self.cache_dir.glob("*.json"))
+        try:
+            cache_files = list(self.cache_dir.glob("*.json"))
 
-        total_size = sum(f.stat().st_size for f in cache_files)
+            total_size = sum(f.stat().st_size for f in cache_files)
 
-        return {
-            "total_entries": len(cache_files),
-            "total_size_mb": total_size / 1024 / 1024,
-            "cache_dir": str(self.cache_dir.absolute()),
-            "ttl_hours": self.ttl.total_seconds() / 3600,
-            "max_size_mb": self.max_size_bytes / 1024 / 1024
-        }
+            return {
+                "total_entries": len(cache_files),
+                "total_size_mb": total_size / 1024 / 1024,
+                "cache_dir": str(self.cache_dir.absolute()),
+                "ttl_hours": self.ttl.total_seconds() / 3600,
+                "max_size_mb": self.max_size_bytes / 1024 / 1024
+            }
+        except Exception as e:
+            logger.error(f"Error getting cache stats: {e}")
+            return {
+                "total_entries": 0,
+                "total_size_mb": 0.0,
+                "cache_dir": str(self.cache_dir.absolute()),
+                "ttl_hours": self.ttl.total_seconds() / 3600,
+                "max_size_mb": self.max_size_bytes / 1024 / 1024
+            }
 
 
 # Global cache instance

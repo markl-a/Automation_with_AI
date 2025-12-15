@@ -36,8 +36,12 @@ class EmbeddingModel(BaseComponent):
 
     def _initialize(self) -> None:
         """Initialize the embedding client."""
-        self.client = OpenAI(api_key=self.api_key)
-        self.logger.info(f"Initialized EmbeddingModel with {self.model}")
+        try:
+            self.client = OpenAI(api_key=self.api_key)
+            self.logger.info(f"Initialized EmbeddingModel with {self.model}")
+        except Exception as e:
+            self.logger.error(f"Failed to initialize OpenAI client: {e}")
+            raise RuntimeError(f"Failed to initialize OpenAI client: {e}") from e
 
     def embed_text(self, text: str) -> List[float]:
         """
@@ -51,12 +55,19 @@ class EmbeddingModel(BaseComponent):
         """
         self.initialize()
 
-        response = self.client.embeddings.create(
-            model=self.model,
-            input=text
-        )
+        # Validate input
+        if not text or not text.strip():
+            raise ValueError("Text parameter cannot be empty")
 
-        return response.data[0].embedding
+        try:
+            response = self.client.embeddings.create(
+                model=self.model,
+                input=text
+            )
+            return response.data[0].embedding
+        except Exception as e:
+            self.logger.error(f"Failed to embed text: {e}")
+            raise RuntimeError(f"Failed to embed text: {e}") from e
 
     def embed_texts(self, texts: List[str], batch_size: int = 100) -> List[List[float]]:
         """
@@ -71,18 +82,28 @@ class EmbeddingModel(BaseComponent):
         """
         self.initialize()
 
+        # Validate inputs
+        if not texts:
+            raise ValueError("Texts parameter cannot be empty")
+        if batch_size <= 0:
+            raise ValueError("Batch size must be greater than 0")
+
         all_embeddings = []
 
-        for i in range(0, len(texts), batch_size):
-            batch = texts[i:i + batch_size]
-            response = self.client.embeddings.create(
-                model=self.model,
-                input=batch
-            )
-            embeddings = [data.embedding for data in response.data]
-            all_embeddings.extend(embeddings)
+        try:
+            for i in range(0, len(texts), batch_size):
+                batch = texts[i:i + batch_size]
+                response = self.client.embeddings.create(
+                    model=self.model,
+                    input=batch
+                )
+                embeddings = [data.embedding for data in response.data]
+                all_embeddings.extend(embeddings)
 
-        return all_embeddings
+            return all_embeddings
+        except Exception as e:
+            self.logger.error(f"Failed to embed texts: {e}")
+            raise RuntimeError(f"Failed to embed texts: {e}") from e
 
     def embed_documents(self, documents: List[str]) -> List[List[float]]:
         """

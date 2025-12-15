@@ -48,17 +48,20 @@ class TemporalIntegration:
 
     async def connect(self):
         """連接到 Temporal 服務器"""
-        self.client = await Client.connect(
-            self.server_url,
-            namespace=self.namespace
-        )
-        return self.client
+        try:
+            self.client = await Client.connect(
+                self.server_url,
+                namespace=self.namespace
+            )
+            return self.client
+        except Exception as e:
+            raise ConnectionError(f"Failed to connect to Temporal server: {str(e)}")
 
     async def start_workflow(
         self,
         workflow_id: str,
         workflow_type: str,
-        args: List[Any] = None,
+        args: Optional[List[Any]] = None,
         task_queue: str = "default-task-queue",
         execution_timeout: Optional[timedelta] = None
     ) -> Dict[str, Any]:
@@ -140,7 +143,7 @@ class TemporalIntegration:
         self,
         workflow_id: str,
         query_name: str,
-        args: List[Any] = None
+        args: Optional[List[Any]] = None
     ) -> Dict[str, Any]:
         """
         查詢工作流狀態
@@ -174,7 +177,7 @@ class TemporalIntegration:
         self,
         workflow_id: str,
         signal_name: str,
-        args: List[Any] = None
+        args: Optional[List[Any]] = None
     ) -> Dict[str, Any]:
         """
         向工作流發送信號
@@ -263,6 +266,30 @@ class TemporalIntegration:
                 'error': str(e)
             }
 
+    def create_workflow(self, **kwargs):
+        """
+        創建工作流裝飾器（實例方法）
+
+        Args:
+            **kwargs: 傳遞給 Temporal workflow 的參數
+
+        Returns:
+            Temporal workflow 裝飾器
+        """
+        return self.create_workflow_decorator()
+
+    def create_activity(self, **kwargs):
+        """
+        創建活動裝飾器（實例方法）
+
+        Args:
+            **kwargs: 傳遞給 Temporal activity 的參數
+
+        Returns:
+            Temporal activity 裝飾器
+        """
+        return self.create_activity_decorator()
+
     @staticmethod
     def create_workflow_decorator():
         """創建工作流裝飾器"""
@@ -312,6 +339,46 @@ class TemporalWorkflowBuilder:
         """初始化構建器"""
         self.workflows = []
         self.activities = []
+
+    def register_workflow(self, **kwargs):
+        """
+        註冊工作流裝飾器
+
+        Args:
+            **kwargs: 工作流參數（例如 name）
+
+        Returns:
+            裝飾器函數
+        """
+        def decorator(func):
+            if not HAS_TEMPORAL:
+                raise ImportError("需要安裝 Temporal SDK")
+
+            # 使用 Temporal 的 workflow.defn 裝飾器
+            workflow_func = workflow.defn(func)
+            self.workflows.append(workflow_func)
+            return workflow_func
+        return decorator
+
+    def register_activity(self, **kwargs):
+        """
+        註冊活動裝飾器
+
+        Args:
+            **kwargs: 活動參數（例如 name）
+
+        Returns:
+            裝飾器函數
+        """
+        def decorator(func):
+            if not HAS_TEMPORAL:
+                raise ImportError("需要安裝 Temporal SDK")
+
+            # 使用 Temporal 的 activity.defn 裝飾器
+            activity_func = activity.defn(func)
+            self.activities.append(activity_func)
+            return activity_func
+        return decorator
 
     def add_workflow(self, workflow_class):
         """添加工作流"""
