@@ -170,3 +170,9 @@ def pytest_configure(config):
     config.addinivalue_line(
         "markers", "requires_api_key: marks tests that require real API keys"
     )
+    config.addinivalue_line(
+        "markers", "unit: marks tests as unit tests"
+    )
+    config.addinivalue_line(
+        "markers", "asyncio: marks tests as async tests"
+    )

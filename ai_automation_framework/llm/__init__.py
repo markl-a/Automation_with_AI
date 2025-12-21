@@ -11,15 +11,38 @@ from ai_automation_framework.llm.streaming import (
     StreamState,
     StreamStats,
 )
+from ai_automation_framework.llm.factory import (
+    LLMClientFactory,
+    create_llm_client,
+)
+
+
+# Auto-register all available LLM providers
+def _register_default_providers():
+    """Register all default LLM providers with the factory."""
+    LLMClientFactory.register_provider("openai", OpenAIClient)
+    LLMClientFactory.register_provider("anthropic", AnthropicClient)
+    LLMClientFactory.register_provider("ollama", OllamaClient)
+
+
+# Initialize providers on module import
+_register_default_providers()
+
 
 __all__ = [
+    # Base classes
     "BaseLLMClient",
+    # Client implementations
     "OpenAIClient",
     "AnthropicClient",
     "OllamaClient",
+    # Streaming
     "StreamProcessor",
     "ParallelStreamProcessor",
     "StreamConfig",
     "StreamState",
     "StreamStats",
+    # Factory
+    "LLMClientFactory",
+    "create_llm_client",
 ]

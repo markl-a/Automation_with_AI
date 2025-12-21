@@ -7,6 +7,13 @@ from typing import Dict, Any, List, Optional
 from datetime import datetime
 from pathlib import Path
 
+# 导入新的工具基类
+from ai_automation_framework.core.tool_registry import (
+    BaseTool,
+    ToolMetadata,
+    register_tool
+)
+
 
 class WebSearchTool:
     """Tool for web searching (simulated)."""
@@ -150,10 +157,100 @@ class CalculatorTool:
 class FileSystemTool:
     """Tool for file system operations."""
 
+    # Class-level configuration for allowed base directories
+    # Can be set by application to restrict file access
+    ALLOWED_BASE_DIRS: Optional[List[str]] = None  # None means no restriction
+
+    @staticmethod
+    def _validate_file_path(file_path: str, operation: str = "access") -> Path:
+        """
+        Validate file path to prevent path traversal attacks.
+
+        Security checks:
+        1. Null byte injection prevention
+        2. Path traversal prevention (../)
+        3. Symbolic link validation
+        4. Base directory restriction (if configured)
+
+        Args:
+            file_path: File path to validate
+            operation: Operation type for error messages
+
+        Returns:
+            Validated Path object
+
+        Raises:
+            ValueError: If path is invalid or unsafe
+        """
+        if not file_path or not file_path.strip():
+            raise ValueError("file_path cannot be empty")
+
+        # Check for null byte injection
+        if '\0' in file_path:
+            raise ValueError(
+                f"Path contains null byte - potential security attack detected. "
+                f"Operation '{operation}' denied."
+            )
+
+        try:
+            # Convert to Path object and resolve to absolute path
+            path = Path(file_path).resolve()
+        except (OSError, RuntimeError) as e:
+            raise ValueError(f"Invalid file path: {str(e)}")
+
+        # Check if path is within allowed base directories (if configured)
+        if FileSystemTool.ALLOWED_BASE_DIRS is not None:
+            allowed = False
+            for base_dir in FileSystemTool.ALLOWED_BASE_DIRS:
+                try:
+                    base_path = Path(base_dir).resolve()
+                    # Check if path is within base directory
+                    path.relative_to(base_path)
+                    allowed = True
+                    break
+                except ValueError:
+                    # path.relative_to raises ValueError if path is not relative to base
+                    continue
+
+            if not allowed:
+                raise ValueError(
+                    f"Access denied: Path '{file_path}' is outside allowed directories. "
+                    f"Allowed base directories: {FileSystemTool.ALLOWED_BASE_DIRS}"
+                )
+
+        # Check for symbolic links (optional security measure)
+        # Symbolic links can be used to bypass directory restrictions
+        if path.exists() and path.is_symlink():
+            # Resolve the symlink and validate the target
+            real_path = path.resolve()
+
+            # If base directories are configured, ensure symlink target is also within allowed paths
+            if FileSystemTool.ALLOWED_BASE_DIRS is not None:
+                allowed = False
+                for base_dir in FileSystemTool.ALLOWED_BASE_DIRS:
+                    try:
+                        base_path = Path(base_dir).resolve()
+                        real_path.relative_to(base_path)
+                        allowed = True
+                        break
+                    except ValueError:
+                        continue
+
+                if not allowed:
+                    raise ValueError(
+                        f"Access denied: Symbolic link target '{real_path}' is outside allowed directories. "
+                        f"Allowed base directories: {FileSystemTool.ALLOWED_BASE_DIRS}"
+                    )
+
+        return path
+
     @staticmethod
     def read_file(file_path: str, encoding: str = "utf-8") -> Dict[str, Any]:
         """
-        Read a text file.
+        Read a text file with security validation.
+
+        Security: This method validates file paths to prevent path traversal attacks.
+        Configure ALLOWED_BASE_DIRS to restrict access to specific directories.
 
         Args:
             file_path: Path to the file
@@ -162,10 +259,6 @@ class FileSystemTool:
         Returns:
             File content and metadata
         """
-        # Validate file_path parameter
-        if not file_path or not file_path.strip():
-            return {"error": "file_path cannot be empty", "success": False}
-
         # Validate encoding parameter
         if not encoding or not encoding.strip():
             return {"error": "encoding cannot be empty", "success": False}
@@ -177,7 +270,8 @@ class FileSystemTool:
             return {"error": f"Invalid encoding: {encoding}", "success": False}
 
         try:
-            path = Path(file_path)
+            # Validate file path for security
+            path = FileSystemTool._validate_file_path(file_path, "read")
 
             if not path.exists():
                 return {"error": f"File not found: {file_path}", "success": False}
@@ -194,6 +288,9 @@ class FileSystemTool:
                 "lines": len(content.splitlines()),
                 "success": True
             }
+        except ValueError as e:
+            # Security validation error
+            return {"error": f"Security validation failed: {str(e)}", "success": False}
         except UnicodeDecodeError as e:
             return {"error": f"Encoding error: {str(e)}", "success": False}
         except PermissionError as e:
@@ -210,7 +307,10 @@ class FileSystemTool:
         encoding: str = "utf-8"
     ) -> Dict[str, Any]:
         """
-        Write content to a file.
+        Write content to a file with security validation.
+
+        Security: This method validates file paths to prevent path traversal attacks.
+        Configure ALLOWED_BASE_DIRS to restrict access to specific directories.
 
         Args:
             file_path: Path to the file
@@ -220,10 +320,6 @@ class FileSystemTool:
         Returns:
             Operation result
         """
-        # Validate file_path parameter
-        if not file_path or not file_path.strip():
-            return {"error": "file_path cannot be empty", "success": False}
-
         # Validate encoding parameter
         if not encoding or not encoding.strip():
             return {"error": "encoding cannot be empty", "success": False}
@@ -235,7 +331,9 @@ class FileSystemTool:
             return {"error": f"Invalid encoding: {encoding}", "success": False}
 
         try:
-            path = Path(file_path)
+            # Validate file path for security
+            path = FileSystemTool._validate_file_path(file_path, "write")
+
             path.parent.mkdir(parents=True, exist_ok=True)
             path.write_text(content, encoding=encoding)
 
@@ -244,6 +342,9 @@ class FileSystemTool:
                 "size": path.stat().st_size,
                 "success": True
             }
+        except ValueError as e:
+            # Security validation error
+            return {"error": f"Security validation failed: {str(e)}", "success": False}
         except UnicodeEncodeError as e:
             return {"error": f"Encoding error: {str(e)}", "success": False}
         except PermissionError as e:

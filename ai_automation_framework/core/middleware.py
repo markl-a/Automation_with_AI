@@ -788,6 +788,96 @@ class MiddlewareStack:
         self.middleware.clear()
         return self
 
+    def _run_before_hooks(self, context: MiddlewareContext) -> bool:
+        """
+        Run before hooks for all middleware.
+
+        Args:
+            context: The middleware context
+
+        Returns:
+            True if short-circuited, False otherwise
+        """
+        for mw in self.middleware:
+            if not mw.should_run(context):
+                continue
+
+            try:
+                mw.before(context)
+
+                if context.short_circuit:
+                    self.logger.info(f"Pipeline short-circuited by {mw.name}")
+                    return True
+
+            except Exception as e:
+                mw.on_error(context, e)
+                if not isinstance(mw, RetryMiddleware):
+                    raise
+
+        return False
+
+    def _run_after_hooks(self, context: MiddlewareContext) -> None:
+        """
+        Run after hooks for all middleware in reverse order.
+
+        Args:
+            context: The middleware context
+        """
+        for mw in reversed(self.middleware):
+            if not mw.should_run(context):
+                continue
+
+            try:
+                mw.after(context)
+            except Exception as e:
+                mw.on_error(context, e)
+                # Don't raise on after hooks to ensure cleanup
+
+    async def _run_before_hooks_async(self, context: MiddlewareContext) -> bool:
+        """
+        Run async before hooks for all middleware.
+
+        Args:
+            context: The middleware context
+
+        Returns:
+            True if short-circuited, False otherwise
+        """
+        for mw in self.middleware:
+            if not mw.should_run(context):
+                continue
+
+            try:
+                await mw.before_async(context)
+
+                if context.short_circuit:
+                    self.logger.info(f"Pipeline short-circuited by {mw.name}")
+                    return True
+
+            except Exception as e:
+                mw.on_error(context, e)
+                if not isinstance(mw, RetryMiddleware):
+                    raise
+
+        return False
+
+    async def _run_after_hooks_async(self, context: MiddlewareContext) -> None:
+        """
+        Run async after hooks for all middleware in reverse order.
+
+        Args:
+            context: The middleware context
+        """
+        for mw in reversed(self.middleware):
+            if not mw.should_run(context):
+                continue
+
+            try:
+                await mw.after_async(context)
+            except Exception as e:
+                mw.on_error(context, e)
+                # Don't raise on after hooks to ensure cleanup
+
     def execute(
         self,
         handler: Callable[[Any], Any],
@@ -809,38 +899,16 @@ class MiddlewareStack:
 
         try:
             # Execute before hooks
-            for mw in self.middleware:
-                if not mw.should_run(context):
-                    continue
-
-                try:
-                    mw.before(context)
-
-                    if context.short_circuit:
-                        self.logger.info(
-                            f"Pipeline short-circuited by {mw.name}"
-                        )
-                        return context.response
-
-                except Exception as e:
-                    mw.on_error(context, e)
-                    if not isinstance(mw, RetryMiddleware):
-                        raise
+            short_circuited = self._run_before_hooks(context)
+            if short_circuited:
+                return context.response
 
             # Execute handler if not short-circuited
             if context.response is None:
                 context.response = handler(context.request)
 
             # Execute after hooks in reverse order
-            for mw in reversed(self.middleware):
-                if not mw.should_run(context):
-                    continue
-
-                try:
-                    mw.after(context)
-                except Exception as e:
-                    mw.on_error(context, e)
-                    # Don't raise on after hooks to ensure cleanup
+            self._run_after_hooks(context)
 
             return context.response
 
@@ -869,38 +937,16 @@ class MiddlewareStack:
 
         try:
             # Execute before hooks
-            for mw in self.middleware:
-                if not mw.should_run(context):
-                    continue
-
-                try:
-                    await mw.before_async(context)
-
-                    if context.short_circuit:
-                        self.logger.info(
-                            f"Pipeline short-circuited by {mw.name}"
-                        )
-                        return context.response
-
-                except Exception as e:
-                    mw.on_error(context, e)
-                    if not isinstance(mw, RetryMiddleware):
-                        raise
+            short_circuited = await self._run_before_hooks_async(context)
+            if short_circuited:
+                return context.response
 
             # Execute handler if not short-circuited
             if context.response is None:
                 context.response = await handler(context.request)
 
             # Execute after hooks in reverse order
-            for mw in reversed(self.middleware):
-                if not mw.should_run(context):
-                    continue
-
-                try:
-                    await mw.after_async(context)
-                except Exception as e:
-                    mw.on_error(context, e)
-                    # Don't raise on after hooks to ensure cleanup
+            await self._run_after_hooks_async(context)
 
             return context.response
 

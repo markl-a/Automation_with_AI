@@ -720,6 +720,56 @@ class Schema:
         self.schema = schema
         self.strict = strict
 
+    def _check_unknown_fields(
+        self,
+        value: Dict[str, Any],
+        field_path: str,
+        errors: List[Dict[str, Any]]
+    ) -> None:
+        """
+        Check for unknown fields in strict mode.
+
+        Args:
+            value: Dictionary being validated
+            field_path: Base path for error messages
+            errors: List to append errors to
+        """
+        if self.strict:
+            unknown_fields = set(value.keys()) - set(self.schema.keys())
+            if unknown_fields:
+                errors.append({
+                    "field": field_path,
+                    "message": f"Unknown fields: {', '.join(unknown_fields)}"
+                })
+
+    def _validate_single_field(
+        self,
+        field_name: str,
+        validator: Union[ValidatorBase, Type],
+        field_value: Any,
+        field_path: str
+    ) -> Any:
+        """
+        Validate a single field.
+
+        Args:
+            field_name: Name of the field
+            validator: Validator or type to use
+            field_value: Value to validate
+            field_path: Full path for error messages
+
+        Returns:
+            Validated value
+
+        Raises:
+            ValidationError: If validation fails
+        """
+        # Convert type to TypeValidator if needed
+        if isinstance(validator, type):
+            validator = TypeValidator(validator)
+
+        return validator.validate(field_value, field_path)
+
     def validate(self, value: Dict[str, Any], field_path: str = "") -> Dict[str, Any]:
         """
         Validate a dictionary against the schema.
@@ -740,17 +790,11 @@ class Schema:
                 field_path
             )
 
-        errors = []
-        result = {}
+        errors: List[Dict[str, Any]] = []
+        result: Dict[str, Any] = {}
 
         # Check for unknown fields in strict mode
-        if self.strict:
-            unknown_fields = set(value.keys()) - set(self.schema.keys())
-            if unknown_fields:
-                errors.append({
-                    "field": field_path,
-                    "message": f"Unknown fields: {', '.join(unknown_fields)}"
-                })
+        self._check_unknown_fields(value, field_path, errors)
 
         # Validate each field
         for field_name, validator in self.schema.items():
@@ -758,11 +802,9 @@ class Schema:
             field_value = value.get(field_name)
 
             try:
-                # Convert type to TypeValidator if needed
-                if isinstance(validator, type):
-                    validator = TypeValidator(validator)
-
-                result[field_name] = validator.validate(field_value, current_path)
+                result[field_name] = self._validate_single_field(
+                    field_name, validator, field_value, current_path
+                )
             except ValidationError as e:
                 errors.append({
                     "field": current_path,
@@ -774,6 +816,38 @@ class Schema:
             raise ValidationError(error_msg, field_path, errors)
 
         return result
+
+    async def _validate_field_async(
+        self,
+        field_name: str,
+        validator: Union[ValidatorBase, Type],
+        field_value: Any,
+        field_path: str
+    ) -> Tuple[str, Any, Optional[Dict[str, Any]]]:
+        """
+        Asynchronously validate a single field.
+
+        Args:
+            field_name: Name of the field
+            validator: Validator or type to use
+            field_value: Value to validate
+            field_path: Full path for error messages
+
+        Returns:
+            Tuple of (field_name, validated_value, error_dict)
+        """
+        try:
+            # Convert type to TypeValidator if needed
+            if isinstance(validator, type):
+                validator = TypeValidator(validator)
+
+            validated_value = await validator.validate_async(field_value, field_path)
+            return field_name, validated_value, None
+        except ValidationError as e:
+            return field_name, None, {
+                "field": field_path,
+                "message": e.message
+            }
 
     async def validate_async(self, value: Dict[str, Any], field_path: str = "") -> Dict[str, Any]:
         """
@@ -795,40 +869,20 @@ class Schema:
                 field_path
             )
 
-        errors = []
-        result = {}
+        errors: List[Dict[str, Any]] = []
+        result: Dict[str, Any] = {}
 
         # Check for unknown fields in strict mode
-        if self.strict:
-            unknown_fields = set(value.keys()) - set(self.schema.keys())
-            if unknown_fields:
-                errors.append({
-                    "field": field_path,
-                    "message": f"Unknown fields: {', '.join(unknown_fields)}"
-                })
-
-        # Validate each field concurrently
-        async def validate_field(field_name: str, validator: ValidatorBase) -> Tuple[str, Any, Optional[Dict]]:
-            """Validate a single field."""
-            current_path = f"{field_path}.{field_name}" if field_path else field_name
-            field_value = value.get(field_name)
-
-            try:
-                # Convert type to TypeValidator if needed
-                if isinstance(validator, type):
-                    validator = TypeValidator(validator)
-
-                validated_value = await validator.validate_async(field_value, current_path)
-                return field_name, validated_value, None
-            except ValidationError as e:
-                return field_name, None, {
-                    "field": current_path,
-                    "message": e.message
-                }
+        self._check_unknown_fields(value, field_path, errors)
 
         # Validate all fields concurrently
         validation_tasks = [
-            validate_field(field_name, validator)
+            self._validate_field_async(
+                field_name,
+                validator,
+                value.get(field_name),
+                f"{field_path}.{field_name}" if field_path else field_name
+            )
             for field_name, validator in self.schema.items()
         ]
 

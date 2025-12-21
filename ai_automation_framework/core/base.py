@@ -1,7 +1,8 @@
 """Base classes for the AI Automation Framework."""
 
 from abc import ABC, abstractmethod
-from typing import Dict, Any, Optional
+from typing import Dict, Any, Optional, Type
+from types import TracebackType
 from pydantic import BaseModel, ConfigDict
 from ai_automation_framework.core.logger import get_logger
 
@@ -13,7 +14,7 @@ class BaseComponent(ABC):
     Provides common functionality like logging, configuration, and lifecycle management.
     """
 
-    def __init__(self, name: Optional[str] = None, **kwargs):
+    def __init__(self, name: Optional[str] = None, **kwargs: Any) -> None:
         """
         Initialize the component.
 
@@ -21,10 +22,10 @@ class BaseComponent(ABC):
             name: Component name
             **kwargs: Additional configuration
         """
-        self.name = name or self.__class__.__name__
+        self.name: str = name or self.__class__.__name__
         self.logger = get_logger(self.name)
-        self.config = kwargs
-        self._initialized = False
+        self.config: Dict[str, Any] = kwargs
+        self._initialized: bool = False
 
     def initialize(self) -> None:
         """Initialize the component."""
@@ -49,12 +50,17 @@ class BaseComponent(ABC):
         """Component-specific cleanup logic."""
         pass
 
-    def __enter__(self):
+    def __enter__(self) -> 'BaseComponent':
         """Context manager entry."""
         self.initialize()
         return self
 
-    def __exit__(self, exc_type, exc_val, exc_tb):
+    def __exit__(
+        self,
+        exc_type: Optional[Type[BaseException]],
+        exc_val: Optional[BaseException],
+        exc_tb: Optional[TracebackType]
+    ) -> None:
         """Context manager exit."""
         self.cleanup()
 

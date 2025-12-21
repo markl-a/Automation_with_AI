@@ -9,6 +9,14 @@ import openai
 from ai_automation_framework.llm.base_client import BaseLLMClient
 from ai_automation_framework.core.base import Message, Response
 from ai_automation_framework.core.config import get_config
+from ai_automation_framework.core.exceptions import (
+    AuthenticationError,
+    RateLimitError,
+    NetworkError,
+    APIError,
+    create_error_context,
+    wrap_exception,
+)
 
 
 class OpenAIClient(BaseLLMClient):
@@ -144,30 +152,105 @@ class OpenAIClient(BaseLLMClient):
 
             except openai.AuthenticationError as e:
                 # Don't retry authentication errors
-                self.logger.error(f"OpenAI authentication failed: {e}")
-                raise RuntimeError(f"Authentication failed: {e}") from e
-            except (openai.RateLimitError, openai.APIError) as e:
+                self.logger.error(
+                    f"OpenAI authentication failed: {e}",
+                    extra=create_error_context(model=self.model, provider="openai")
+                )
+                raise AuthenticationError(
+                    message=f"OpenAI authentication failed: {e}",
+                    context=create_error_context(model=self.model, provider="openai"),
+                    original_exception=e
+                ) from e
+            except openai.RateLimitError as e:
+                last_error = e
+                if attempt < self.max_retries and self._is_retryable_error(e):
+                    delay = self._calculate_backoff_delay(attempt)
+                    self.logger.warning(
+                        f"OpenAI rate limit (attempt {attempt + 1}/{self.max_retries + 1}): {e}. "
+                        f"Retrying in {delay:.2f}s...",
+                        extra=create_error_context(attempt=attempt + 1, delay=delay)
+                    )
+                    time.sleep(delay)
+                else:
+                    self.logger.error(
+                        f"OpenAI rate limit exhausted: {e}",
+                        extra=create_error_context(model=self.model, attempts=attempt + 1)
+                    )
+                    raise RateLimitError(
+                        message=f"OpenAI rate limit exceeded after {attempt + 1} attempts",
+                        context=create_error_context(model=self.model, attempts=attempt + 1),
+                        original_exception=e
+                    ) from e
+            except openai.APIError as e:
                 last_error = e
                 if attempt < self.max_retries and self._is_retryable_error(e):
                     delay = self._calculate_backoff_delay(attempt)
                     self.logger.warning(
                         f"OpenAI API error (attempt {attempt + 1}/{self.max_retries + 1}): {e}. "
-                        f"Retrying in {delay:.2f}s..."
+                        f"Retrying in {delay:.2f}s...",
+                        extra=create_error_context(attempt=attempt + 1, delay=delay)
                     )
                     time.sleep(delay)
                 else:
-                    error_type = type(e).__name__
-                    self.logger.error(f"OpenAI {error_type}: {e}")
-                    raise RuntimeError(f"{error_type}: {e}") from e
+                    self.logger.error(
+                        f"OpenAI API error: {e}",
+                        extra=create_error_context(
+                            model=self.model,
+                            status_code=getattr(e, 'status_code', None)
+                        )
+                    )
+                    raise APIError(
+                        message=f"OpenAI API error: {e}",
+                        status_code=getattr(e, 'status_code', None),
+                        context=create_error_context(model=self.model),
+                        original_exception=e
+                    ) from e
+            except (ConnectionError, TimeoutError) as e:
+                self.logger.error(
+                    f"Network error calling OpenAI: {e}",
+                    extra=create_error_context(model=self.model)
+                )
+                raise NetworkError(
+                    message=f"Network error calling OpenAI: {e}",
+                    context=create_error_context(model=self.model),
+                    original_exception=e
+                ) from e
             except Exception as e:
-                self.logger.error(f"Unexpected error calling OpenAI: {e}")
-                raise RuntimeError(f"Failed to get OpenAI response: {e}") from e
+                self.logger.error(
+                    f"Unexpected error calling OpenAI: {e}",
+                    extra=create_error_context(
+                        model=self.model,
+                        error_type=type(e).__name__
+                    )
+                )
+                raise APIError(
+                    message=f"Unexpected error calling OpenAI: {e}",
+                    context=create_error_context(
+                        model=self.model,
+                        error_type=type(e).__name__
+                    ),
+                    original_exception=e
+                ) from e
 
         # If we exhausted all retries
         if last_error:
-            error_type = type(last_error).__name__
-            self.logger.error(f"OpenAI {error_type} after {self.max_retries + 1} attempts: {last_error}")
-            raise RuntimeError(f"{error_type} after {self.max_retries + 1} attempts: {last_error}") from last_error
+            self.logger.error(
+                f"All retries exhausted for OpenAI after {self.max_retries + 1} attempts",
+                extra=create_error_context(model=self.model, attempts=self.max_retries + 1)
+            )
+            if isinstance(last_error, openai.RateLimitError):
+                raise RateLimitError(
+                    message=f"OpenAI rate limit exceeded after {self.max_retries + 1} attempts",
+                    context=create_error_context(model=self.model, attempts=self.max_retries + 1),
+                    original_exception=last_error
+                ) from last_error
+            else:
+                raise APIError(
+                    message=f"OpenAI API error after {self.max_retries + 1} attempts: {last_error}",
+                    status_code=getattr(last_error, 'status_code', None),
+                    context=create_error_context(model=self.model, attempts=self.max_retries + 1),
+                    original_exception=last_error
+                ) from last_error
 
     async def achat(
         self,
@@ -233,30 +316,105 @@ class OpenAIClient(BaseLLMClient):
 
             except openai.AuthenticationError as e:
                 # Don't retry authentication errors
-                self.logger.error(f"OpenAI authentication failed: {e}")
-                raise RuntimeError(f"Authentication failed: {e}") from e
-            except (openai.RateLimitError, openai.APIError) as e:
+                self.logger.error(
+                    f"OpenAI authentication failed: {e}",
+                    extra=create_error_context(model=self.model, provider="openai")
+                )
+                raise AuthenticationError(
+                    message=f"OpenAI authentication failed: {e}",
+                    context=create_error_context(model=self.model, provider="openai"),
+                    original_exception=e
+                ) from e
+            except openai.RateLimitError as e:
+                last_error = e
+                if attempt < self.max_retries and self._is_retryable_error(e):
+                    delay = self._calculate_backoff_delay(attempt)
+                    self.logger.warning(
+                        f"OpenAI rate limit (attempt {attempt + 1}/{self.max_retries + 1}): {e}. "
+                        f"Retrying in {delay:.2f}s...",
+                        extra=create_error_context(attempt=attempt + 1, delay=delay)
+                    )
+                    await asyncio.sleep(delay)
+                else:
+                    self.logger.error(
+                        f"OpenAI rate limit exhausted: {e}",
+                        extra=create_error_context(model=self.model, attempts=attempt + 1)
+                    )
+                    raise RateLimitError(
+                        message=f"OpenAI rate limit exceeded after {attempt + 1} attempts",
+                        context=create_error_context(model=self.model, attempts=attempt + 1),
+                        original_exception=e
+                    ) from e
+            except openai.APIError as e:
                 last_error = e
                 if attempt < self.max_retries and self._is_retryable_error(e):
                     delay = self._calculate_backoff_delay(attempt)
                     self.logger.warning(
                         f"OpenAI API error (attempt {attempt + 1}/{self.max_retries + 1}): {e}. "
-                        f"Retrying in {delay:.2f}s..."
+                        f"Retrying in {delay:.2f}s...",
+                        extra=create_error_context(attempt=attempt + 1, delay=delay)
                     )
                     await asyncio.sleep(delay)
                 else:
-                    error_type = type(e).__name__
-                    self.logger.error(f"OpenAI {error_type}: {e}")
-                    raise RuntimeError(f"{error_type}: {e}") from e
+                    self.logger.error(
+                        f"OpenAI API error: {e}",
+                        extra=create_error_context(
+                            model=self.model,
+                            status_code=getattr(e, 'status_code', None)
+                        )
+                    )
+                    raise APIError(
+                        message=f"OpenAI API error: {e}",
+                        status_code=getattr(e, 'status_code', None),
+                        context=create_error_context(model=self.model),
+                        original_exception=e
+                    ) from e
+            except (ConnectionError, TimeoutError) as e:
+                self.logger.error(
+                    f"Network error calling OpenAI: {e}",
+                    extra=create_error_context(model=self.model)
+                )
+                raise NetworkError(
+                    message=f"Network error calling OpenAI: {e}",
+                    context=create_error_context(model=self.model),
+                    original_exception=e
+                ) from e
             except Exception as e:
-                self.logger.error(f"Unexpected error calling OpenAI: {e}")
-                raise RuntimeError(f"Failed to get OpenAI response: {e}") from e
+                self.logger.error(
+                    f"Unexpected error calling OpenAI: {e}",
+                    extra=create_error_context(
+                        model=self.model,
+                        error_type=type(e).__name__
+                    )
+                )
+                raise APIError(
+                    message=f"Unexpected error calling OpenAI: {e}",
+                    context=create_error_context(
+                        model=self.model,
+                        error_type=type(e).__name__
+                    ),
+                    original_exception=e
+                ) from e
 
         # If we exhausted all retries
         if last_error:
-            error_type = type(last_error).__name__
-            self.logger.error(f"OpenAI {error_type} after {self.max_retries + 1} attempts: {last_error}")
-            raise RuntimeError(f"{error_type} after {self.max_retries + 1} attempts: {last_error}") from last_error
+            self.logger.error(
+                f"All retries exhausted for OpenAI after {self.max_retries + 1} attempts",
+                extra=create_error_context(model=self.model, attempts=self.max_retries + 1)
+            )
+            if isinstance(last_error, openai.RateLimitError):
+                raise RateLimitError(
+                    message=f"OpenAI rate limit exceeded after {self.max_retries + 1} attempts",
+                    context=create_error_context(model=self.model, attempts=self.max_retries + 1),
+                    original_exception=last_error
+                ) from last_error
+            else:
+                raise APIError(
+                    message=f"OpenAI API error after {self.max_retries + 1} attempts: {last_error}",
+                    status_code=getattr(last_error, 'status_code', None),
+                    context=create_error_context(model=self.model, attempts=self.max_retries + 1),
+                    original_exception=last_error
+                ) from last_error
 
     async def stream_chat(
         self,
@@ -296,11 +454,37 @@ class OpenAIClient(BaseLLMClient):
                     yield chunk.choices[0].delta.content
 
         except openai.RateLimitError as e:
-            self.logger.error(f"OpenAI rate limit exceeded during stream: {e}")
-            raise RuntimeError(f"Rate limit exceeded: {e}") from e
+            self.logger.error(
+                f"OpenAI rate limit exceeded during stream: {e}",
+                extra=create_error_context(model=self.model, operation="stream")
+            )
+            raise RateLimitError(
+                message=f"OpenAI rate limit exceeded during stream: {e}",
+                context=create_error_context(model=self.model, operation="stream"),
+                original_exception=e
+            ) from e
         except openai.AuthenticationError as e:
-            self.logger.error(f"OpenAI authentication failed during stream: {e}")
-            raise RuntimeError(f"Authentication failed: {e}") from e
+            self.logger.error(
+                f"OpenAI authentication failed during stream: {e}",
+                extra=create_error_context(model=self.model, operation="stream")
+            )
+            raise AuthenticationError(
+                message=f"OpenAI authentication failed during stream: {e}",
+                context=create_error_context(model=self.model, operation="stream"),
+                original_exception=e
+            ) from e
         except openai.APIError as e:
-            self.logger.error(f"OpenAI API error during stream: {e}")
-            raise RuntimeError(f"API error: {e}") from e
+            self.logger.error(
+                f"OpenAI API error during stream: {e}",
+                extra=create_error_context(
+                    model=self.model,
+                    operation="stream",
+                    status_code=getattr(e, 'status_code', None)
+                )
+            )
+            raise APIError(
+                message=f"OpenAI API error during stream: {e}",
+                status_code=getattr(e, 'status_code', None),
+                context=create_error_context(model=self.model, operation="stream"),
+                original_exception=e
+            ) from e
