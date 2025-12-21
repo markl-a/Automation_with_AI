@@ -32,7 +32,7 @@ jobs:
 
     steps:
     - name: Checkout code
-      uses: actions/checkout@v4
+      uses: actions/checkout@v6
 
     - name: Configure AWS credentials
       uses: aws-actions/configure-aws-credentials@v4
@@ -120,7 +120,7 @@ jobs:
 
     steps:
     - name: Checkout code
-      uses: actions/checkout@v4
+      uses: actions/checkout@v6
 
     - name: Azure Login
       uses: azure/login@v1
@@ -202,7 +202,7 @@ jobs:
 
     steps:
     - name: Checkout code
-      uses: actions/checkout@v4
+      uses: actions/checkout@v6
 
     - name: Authenticate to Google Cloud
       uses: google-github-actions/auth@v2
