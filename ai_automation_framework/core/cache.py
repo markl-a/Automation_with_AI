@@ -19,7 +19,7 @@ import time
 from collections import OrderedDict
 from dataclasses import dataclass, field
 from datetime import datetime, timedelta
-from typing import Any, Callable, Dict, Optional, Tuple, TypeVar, Union
+from typing import Any, Callable, Dict, List, Optional, Tuple, TypeVar, Union
 from ai_automation_framework.core.logger import get_logger
 
 # Optional Redis support
@@ -235,6 +235,94 @@ class LRUCache:
             self._cache.move_to_end(key)
             self._stats.sets += 1
             logger.debug(f"Cache set: {key} (ttl={ttl}s)")
+
+    def batch_get(self, keys: List[str]) -> Dict[str, Any]:
+        """
+        批量獲取緩存值，減少鎖開銷
+
+        相比多次調用 get()，batch_get() 只需要獲取一次鎖，
+        大幅減少鎖競爭和上下文切換開銷。
+
+        Args:
+            keys: 要獲取的鍵列表
+
+        Returns:
+            字典，包含找到的鍵值對（過期和不存在的鍵會被排除）
+
+        Example:
+            >>> cache = LRUCache()
+            >>> cache.set("key1", "value1")
+            >>> cache.set("key2", "value2")
+            >>> results = cache.batch_get(["key1", "key2", "key3"])
+            >>> # results = {"key1": "value1", "key2": "value2"}
+            >>> # "key3" not in results (not found)
+        """
+        results = {}
+
+        with self._lock:
+            for key in keys:
+                if key not in self._cache:
+                    self._stats.misses += 1
+                    continue
+
+                entry = self._cache[key]
+
+                # Check expiration
+                if entry.is_expired():
+                    self._stats.misses += 1
+                    self._stats.expirations += 1
+                    del self._cache[key]
+                    continue
+
+                # Move to end (most recently used)
+                self._cache.move_to_end(key)
+                entry.touch()
+                self._stats.hits += 1
+                results[key] = entry.value
+
+        logger.debug(f"Batch get: {len(keys)} keys requested, {len(results)} found")
+        return results
+
+    def batch_set(self, items: Dict[str, Any], ttl: Optional[float] = None) -> None:
+        """
+        批量設置緩存值
+
+        相比多次調用 set()，batch_set() 只需要獲取一次鎖，
+        並且可以更高效地處理驅逐邏輯。
+
+        Args:
+            items: 要設置的鍵值對字典
+            ttl: 所有項目的 TTL（秒），None 使用默認 TTL
+
+        Example:
+            >>> cache = LRUCache()
+            >>> items = {
+            ...     "key1": "value1",
+            ...     "key2": "value2",
+            ...     "key3": "value3"
+            ... }
+            >>> cache.batch_set(items, ttl=300)
+        """
+        with self._lock:
+            # Use default TTL if not specified
+            if ttl is None:
+                ttl = self.default_ttl
+
+            for key, value in items.items():
+                # Check if we need to evict
+                if key not in self._cache and len(self._cache) >= self.max_size:
+                    # Evict least recently used
+                    evicted_key, _ = self._cache.popitem(last=False)
+                    self._stats.evictions += 1
+                    logger.debug(f"Evicted LRU entry: {evicted_key}")
+
+                # Add or update entry
+                entry = CacheEntry(value=value, timestamp=time.time(), ttl=ttl)
+                self._cache[key] = entry
+                self._cache.move_to_end(key)
+                self._stats.sets += 1
+
+        logger.debug(f"Batch set: {len(items)} items (ttl={ttl}s)")
 
     def delete(self, key: str) -> bool:
         """

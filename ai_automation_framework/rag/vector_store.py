@@ -36,9 +36,14 @@ class VectorStore(BaseComponent):
         self.persist_directory = persist_directory or config.chroma_persist_directory
         self.client = None
         self.collection = None
+        self._initialized = False
 
     def _initialize(self) -> None:
         """Initialize the ChromaDB client and collection."""
+        # Skip if already initialized (performance optimization)
+        if self._initialized:
+            return
+
         # Create persist directory if it doesn't exist
         Path(self.persist_directory).mkdir(parents=True, exist_ok=True)
 
@@ -54,6 +59,7 @@ class VectorStore(BaseComponent):
             metadata={"hnsw:space": "cosine"}
         )
 
+        self._initialized = True
         self.logger.info(f"Initialized VectorStore: {self.collection_name}")
 
     def add_documents(

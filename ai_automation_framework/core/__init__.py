@@ -5,6 +5,23 @@ from ai_automation_framework.core.logger import get_logger
 from ai_automation_framework.core.base import BaseComponent, Message, Response
 from ai_automation_framework.core.usage_tracker import UsageTracker, get_usage_tracker
 from ai_automation_framework.core.cache import ResponseCache, get_cache
+from ai_automation_framework.core.exceptions import (
+    AIAutomationError,
+    LLMError,
+    AuthenticationError,
+    RateLimitError,
+    NetworkError,
+    APIError,
+    ToolError,
+    ConfigError,
+    TimeoutError,
+    ResourceError,
+    RetryStrategy,
+    RetryConfig,
+    retry,
+    create_error_context,
+    wrap_exception,
+)
 from ai_automation_framework.core.async_utils import (
     run_sync,
     run_async,
@@ -100,6 +117,13 @@ from ai_automation_framework.core.di import (
     get_global_container,
     reset_global_container,
 )
+from ai_automation_framework.core.tool_registry import (
+    BaseTool,
+    ToolMetadata,
+    ToolRegistry,
+    get_tool_registry,
+    register_tool,
+)
 
 __all__ = [
     "Config",
@@ -112,6 +136,22 @@ __all__ = [
     "get_usage_tracker",
     "ResponseCache",
     "get_cache",
+    # Exceptions
+    "AIAutomationError",
+    "LLMError",
+    "AuthenticationError",
+    "RateLimitError",
+    "NetworkError",
+    "APIError",
+    "ToolError",
+    "ConfigError",
+    "TimeoutError",
+    "ResourceError",
+    "RetryStrategy",
+    "RetryConfig",
+    "retry",
+    "create_error_context",
+    "wrap_exception",
     "run_sync",
     "run_async",
     "gather_with_concurrency",
@@ -193,4 +233,10 @@ __all__ = [
     "RegistrationError",
     "get_global_container",
     "reset_global_container",
+    # Tool Registry
+    "BaseTool",
+    "ToolMetadata",
+    "ToolRegistry",
+    "get_tool_registry",
+    "register_tool",
 ]

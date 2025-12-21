@@ -3,6 +3,7 @@
 from abc import abstractmethod
 from typing import List, Dict, Any, Optional, AsyncIterator
 from ai_automation_framework.core.base import BaseComponent, Message, Response
+from ai_automation_framework.core.exceptions import ConfigError
 
 
 class BaseLLMClient(BaseComponent):
@@ -135,7 +136,14 @@ class BaseLLMClient(BaseComponent):
     def _initialize(self) -> None:
         """Initialize the client."""
         if not self.api_key:
-            raise ValueError(f"API key required for {self.name}")
+            self.logger.error(
+                f"API key missing for {self.name}",
+                extra={"client": self.name, "model": self.model}
+            )
+            raise ConfigError(
+                message=f"API key required for {self.name}",
+                context={"client": self.name, "model": self.model}
+            )
         self.logger.info(f"Initialized {self.name} with model {self.model}")
 
     def _cleanup(self) -> None:

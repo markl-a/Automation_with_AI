@@ -5,6 +5,7 @@ import os
 import json
 import time
 import uuid
+import re
 from pathlib import Path
 from typing import Optional, Any, Dict, Callable
 from contextvars import ContextVar
@@ -18,18 +19,196 @@ from ai_automation_framework.core.config import get_config
 _correlation_id: ContextVar[Optional[str]] = ContextVar("correlation_id", default=None)
 
 
+class SensitiveDataFilter:
+    """
+    Filter to mask sensitive data in log messages.
+
+    This filter protects against accidental logging of:
+    - API keys and tokens
+    - Passwords and secrets
+    - Credit card numbers
+    - Email addresses (optional)
+    - IP addresses (optional)
+    - JWT tokens
+    - Bearer tokens
+    """
+
+    # Regex patterns for sensitive data detection
+    PATTERNS = {
+        # API Keys and Tokens (common patterns)
+        'api_key': [
+            r'api[_-]?key[\s:=]+["\']?([a-zA-Z0-9_\-]{20,})["\']?',
+            r'apikey[\s:=]+["\']?([a-zA-Z0-9_\-]{20,})["\']?',
+            r'key[\s:=]+["\']?([a-zA-Z0-9_\-]{32,})["\']?',
+        ],
+        # Passwords
+        'password': [
+            r'password[\s:=]+["\']?([^\s"\']{8,})["\']?',
+            r'passwd[\s:=]+["\']?([^\s"\']{8,})["\']?',
+            r'pwd[\s:=]+["\']?([^\s"\']{8,})["\']?',
+        ],
+        # Secrets and tokens
+        'secret': [
+            r'secret[\s:=]+["\']?([a-zA-Z0-9_\-]{20,})["\']?',
+            r'token[\s:=]+["\']?([a-zA-Z0-9_\-]{20,})["\']?',
+            r'auth[\s:=]+["\']?([a-zA-Z0-9_\-]{20,})["\']?',
+        ],
+        # Bearer tokens
+        'bearer': [
+            r'Bearer\s+([a-zA-Z0-9_\-\.]+)',
+            r'bearer[\s:=]+["\']?([a-zA-Z0-9_\-\.]+)["\']?',
+        ],
+        # JWT tokens (rough pattern)
+        'jwt': [
+            r'eyJ[a-zA-Z0-9_\-]*\.eyJ[a-zA-Z0-9_\-]*\.[a-zA-Z0-9_\-]*',
+        ],
+        # AWS keys
+        'aws_key': [
+            r'AKIA[0-9A-Z]{16}',  # AWS Access Key ID
+            r'aws_secret_access_key[\s:=]+["\']?([a-zA-Z0-9/+=]{40})["\']?',
+        ],
+        # Credit card numbers (basic pattern)
+        'credit_card': [
+            r'\b\d{4}[\s\-]?\d{4}[\s\-]?\d{4}[\s\-]?\d{4}\b',
+        ],
+        # Email addresses (optional - may mask legitimate non-sensitive emails)
+        'email': [
+            r'\b[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Z|a-z]{2,}\b',
+        ],
+        # Generic secrets in environment variable format
+        'env_secret': [
+            r'[A-Z_]+_(KEY|SECRET|TOKEN|PASSWORD)[\s:=]+["\']?([^\s"\']+)["\']?',
+        ],
+    }
+
+    # Replacement text for masked data
+    MASK_TEXT = {
+        'api_key': '***API_KEY***',
+        'password': '***PASSWORD***',
+        'secret': '***SECRET***',
+        'bearer': 'Bearer ***TOKEN***',
+        'jwt': '***JWT_TOKEN***',
+        'aws_key': '***AWS_KEY***',
+        'credit_card': '****-****-****-****',
+        'email': '***EMAIL***',
+        'env_secret': '***SECRET***',
+    }
+
+    def __init__(self, mask_emails: bool = False, custom_patterns: Dict[str, str] = None):
+        """
+        Initialize the sensitive data filter.
+
+        Args:
+            mask_emails: Whether to mask email addresses (default: False)
+            custom_patterns: Additional patterns to mask {name: regex_pattern}
+        """
+        self.mask_emails = mask_emails
+        self.custom_patterns = custom_patterns or {}
+
+        # Compile regex patterns for performance
+        self.compiled_patterns = {}
+        for category, patterns in self.PATTERNS.items():
+            # Skip email masking if not enabled
+            if category == 'email' and not mask_emails:
+                continue
+
+            self.compiled_patterns[category] = [
+                re.compile(pattern, re.IGNORECASE) for pattern in patterns
+            ]
+
+        # Add custom patterns
+        for name, pattern in self.custom_patterns.items():
+            self.compiled_patterns[f'custom_{name}'] = [
+                re.compile(pattern, re.IGNORECASE)
+            ]
+
+    def filter(self, message: str) -> str:
+        """
+        Filter and mask sensitive data in a log message.
+
+        Args:
+            message: Original log message
+
+        Returns:
+            Filtered message with sensitive data masked
+        """
+        if not message:
+            return message
+
+        filtered_message = message
+
+        # Apply each pattern category
+        for category, patterns in self.compiled_patterns.items():
+            mask_text = self.MASK_TEXT.get(category, '***REDACTED***')
+
+            for pattern in patterns:
+                # Replace sensitive data with mask
+                filtered_message = pattern.sub(mask_text, filtered_message)
+
+        return filtered_message
+
+    def filter_dict(self, data: Dict[str, Any]) -> Dict[str, Any]:
+        """
+        Filter sensitive data in a dictionary (recursive).
+
+        Args:
+            data: Dictionary potentially containing sensitive data
+
+        Returns:
+            Filtered dictionary with sensitive values masked
+        """
+        if not isinstance(data, dict):
+            return data
+
+        filtered = {}
+        sensitive_keys = {
+            'password', 'passwd', 'pwd', 'secret', 'token', 'api_key',
+            'apikey', 'key', 'auth', 'authorization', 'bearer', 'credentials'
+        }
+
+        for key, value in data.items():
+            # Check if key indicates sensitive data
+            if any(sensitive_key in key.lower() for sensitive_key in sensitive_keys):
+                filtered[key] = '***REDACTED***'
+            elif isinstance(value, dict):
+                # Recursively filter nested dictionaries
+                filtered[key] = self.filter_dict(value)
+            elif isinstance(value, str):
+                # Filter string values
+                filtered[key] = self.filter(value)
+            elif isinstance(value, list):
+                # Filter list items
+                filtered[key] = [
+                    self.filter(item) if isinstance(item, str)
+                    else self.filter_dict(item) if isinstance(item, dict)
+                    else item
+                    for item in value
+                ]
+            else:
+                filtered[key] = value
+
+        return filtered
+
+
+# Global sensitive data filter instance
+_sensitive_filter = SensitiveDataFilter(mask_emails=False)
+
+
 def _json_serializer(record: Dict[str, Any]) -> str:
     """
-    Serialize log record to JSON format.
+    Serialize log record to JSON format with sensitive data filtering.
 
     Args:
         record: Log record dictionary
 
     Returns:
-        JSON formatted string
+        JSON formatted string with sensitive data masked
     """
     # Extract correlation ID if available
     correlation_id = _correlation_id.get()
+
+    # Filter sensitive data from message
+    filtered_message = _sensitive_filter.filter(record["message"])
 
     # Build structured log entry
     log_entry = {
@@ -38,22 +217,27 @@ def _json_serializer(record: Dict[str, Any]) -> str:
         "logger": record["name"],
         "function": record["function"],
         "line": record["line"],
-        "message": record["message"],
+        "message": filtered_message,
     }
 
     # Add correlation ID if present
     if correlation_id:
         log_entry["correlation_id"] = correlation_id
 
-    # Add extra fields from record
+    # Add extra fields from record (with filtering)
     if "extra" in record and record["extra"]:
-        log_entry["extra"] = record["extra"]
+        log_entry["extra"] = _sensitive_filter.filter_dict(record["extra"])
 
     # Add exception info if present
     if record["exception"]:
+        exception_value = str(record["exception"].value) if record["exception"].value else None
+        # Filter sensitive data from exception messages
+        if exception_value:
+            exception_value = _sensitive_filter.filter(exception_value)
+
         log_entry["exception"] = {
             "type": record["exception"].type.__name__ if record["exception"].type else None,
-            "value": str(record["exception"].value) if record["exception"].value else None,
+            "value": exception_value,
         }
 
     return json.dumps(log_entry)
@@ -199,6 +383,40 @@ def get_correlation_id() -> Optional[str]:
 def clear_correlation_id() -> None:
     """Clear the current correlation ID."""
     _correlation_id.set(None)
+
+
+def configure_sensitive_filter(
+    mask_emails: bool = False,
+    custom_patterns: Dict[str, str] = None
+) -> None:
+    """
+    Configure the global sensitive data filter.
+
+    Args:
+        mask_emails: Whether to mask email addresses in logs
+        custom_patterns: Additional regex patterns to mask {name: pattern}
+
+    Example:
+        >>> configure_sensitive_filter(
+        ...     mask_emails=True,
+        ...     custom_patterns={'ssn': r'\b\d{3}-\d{2}-\d{4}\b'}
+        ... )
+    """
+    global _sensitive_filter
+    _sensitive_filter = SensitiveDataFilter(
+        mask_emails=mask_emails,
+        custom_patterns=custom_patterns
+    )
+
+
+def get_sensitive_filter() -> SensitiveDataFilter:
+    """
+    Get the global sensitive data filter instance.
+
+    Returns:
+        Current SensitiveDataFilter instance
+    """
+    return _sensitive_filter
 
 
 @contextmanager

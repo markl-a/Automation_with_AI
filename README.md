@@ -4,6 +4,9 @@ A comprehensive, production-ready framework for LLM and AI automation - from bas
 
 [![Python 3.10+](https://img.shields.io/badge/python-3.10+-blue.svg)](https://www.python.org/downloads/)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
+[![Version](https://img.shields.io/badge/version-0.5.0-green.svg)](https://github.com/markl-a/Automation_with_AI/releases)
+[![Code style: black](https://img.shields.io/badge/code%20style-black-000000.svg)](https://github.com/psf/black)
+[![PRs Welcome](https://img.shields.io/badge/PRs-welcome-brightgreen.svg)](CONTRIBUTING.md)
 
 ## ✨ Features
 
@@ -71,6 +74,7 @@ A comprehensive, production-ready framework for LLM and AI automation - from bas
 - [Documentation](#documentation)
 - [Framework Architecture](#framework-architecture)
 - [Contributing](#contributing)
+- [Changelog](#changelog)
 - [License](#license)
 
 ## 🚀 Installation
@@ -266,6 +270,7 @@ python examples/demos/code_assistant_demo.py
 Comprehensive documentation and learning resources:
 
 - **[Getting Started Guide](docs/GETTING_STARTED.md)** - Complete setup and first steps
+- **[Architecture Guide](docs/ARCHITECTURE.md)** - System architecture and design decisions
 - **[Learning Path](docs/LEARNING_PATH.md)** - 📚 從零基礎到精通的完整學習路徑（Level 0-5）
 - **[Competition Projects](docs/COMPETITION_PROJECTS.md)** - 🏆 Kaggle 和 Hackathon 項目模板
 - **[Practice Exercises](docs/PRACTICE_EXERCISES.md)** - 🎯 實戰練習題庫（50+ 練習題）
@@ -341,7 +346,16 @@ agent.register_tool("my_tool", my_tool, schema={...})
 
 ## 🤝 Contributing
 
-Contributions are welcome! Please feel free to submit a Pull Request.
+Contributions are welcome! We appreciate your help in making this project better.
+
+Please read our [Contributing Guide](CONTRIBUTING.md) to learn about:
+- Development environment setup
+- Code style guidelines
+- Commit message conventions
+- Pull request process
+- Testing requirements
+
+For major changes, please open an issue first to discuss what you would like to change.
 
 ## 📝 License
 
@@ -369,11 +383,19 @@ This framework is built using modern AI technologies and best practices from:
 - [x] Usage tracking and cost monitoring
 - [x] Response caching system
 - [x] Complete API documentation
+- [x] Enterprise-grade infrastructure (DI, Circuit Breaker, Events, Plugins)
+- [x] Workflow automation integrations (Temporal, Prefect, Celery)
 - [ ] Web UI with Streamlit
 - [ ] Integration with more LLM providers (Google Gemini, Cohere)
 - [ ] Advanced RAG techniques (HyDE, MultiQuery, etc.)
 - [ ] Agent memory persistence
 - [ ] Production deployment guides
+
+## 📝 Changelog
+
+See [CHANGELOG.md](CHANGELOG.md) for detailed version history and release notes.
+
+**Current Version**: 0.5.0
 
 ---
 

@@ -18,8 +18,8 @@ class BaseAgent(BaseComponent):
         name: str = "Agent",
         llm: Optional[BaseLLMClient] = None,
         system_message: Optional[str] = None,
-        **kwargs
-    ):
+        **kwargs: Any
+    ) -> None:
         """
         Initialize the agent.
 
@@ -30,8 +30,8 @@ class BaseAgent(BaseComponent):
             **kwargs: Additional configuration
         """
         super().__init__(name=name, **kwargs)
-        self.llm = llm or OpenAIClient()
-        self.system_message = system_message
+        self.llm: BaseLLMClient = llm or OpenAIClient()
+        self.system_message: Optional[str] = system_message
         self.memory: List[Message] = []
 
         if system_message:
@@ -80,7 +80,7 @@ class BaseAgent(BaseComponent):
         else:
             self.memory = []
 
-    def chat(self, user_message: str, **kwargs) -> str:
+    def chat(self, user_message: str, **kwargs: Any) -> str:
         """
         Chat with the agent.
 
@@ -98,7 +98,7 @@ class BaseAgent(BaseComponent):
 
         # Get response from LLM
         try:
-            response = self.llm.chat(self.memory, **kwargs)
+            response: Response = self.llm.chat(self.memory, **kwargs)
         except Exception as e:
             self.logger.error(f"LLM chat failed: {e}")
             raise
@@ -114,7 +114,7 @@ class BaseAgent(BaseComponent):
         return response.content
 
     @abstractmethod
-    def run(self, task: str, **kwargs) -> Any:
+    def run(self, task: str, **kwargs: Any) -> Any:
         """
         Run the agent on a task.
 
@@ -127,6 +127,6 @@ class BaseAgent(BaseComponent):
         """
         pass
 
-    def __call__(self, task: str, **kwargs) -> Any:
+    def __call__(self, task: str, **kwargs: Any) -> Any:
         """Make agent callable."""
         return self.run(task, **kwargs)

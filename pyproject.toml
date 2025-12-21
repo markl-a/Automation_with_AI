@@ -26,16 +26,16 @@ classifiers = [
 keywords = ["ai", "llm", "automation", "openai", "anthropic", "langchain", "rag", "agents"]
 
 dependencies = [
-    "openai>=1.50.0",
-    "anthropic>=0.39.0",
-    "langchain>=0.3.0",
-    "chromadb>=0.5.0",
-    "python-dotenv>=1.0.0",
-    "pydantic>=2.9.0",
-    "rich>=13.9.0",
-    "loguru>=0.7.2",
-    "requests>=2.32.0",
-    "aiohttp>=3.10.0",
+    "openai>=1.50.0,<2.0.0",
+    "anthropic>=0.39.0,<1.0.0",
+    "langchain>=0.3.0,<1.0.0",
+    "chromadb>=0.5.0,<1.0.0",
+    "python-dotenv>=1.0.0,<2.0.0",
+    "pydantic>=2.9.0,<3.0.0",
+    "rich>=13.9.0,<14.0.0",
+    "loguru>=0.7.2,<1.0.0",
+    "requests>=2.32.0,<3.0.0",
+    "aiohttp>=3.10.0,<4.0.0",
 ]
 
 [project.optional-dependencies]
@@ -57,18 +57,14 @@ docs = [
 ]
 
 rag = [
-    "langchain-community>=0.3.0",
-    "langchain-openai>=0.2.0",
-    "sentence-transformers>=3.0.0",
-    "faiss-cpu>=1.9.0",
-    "pypdf>=5.0.0",
-    "python-docx>=1.1.0",
-    "tiktoken>=0.8.0",
-]
-
-agents = [
-    "autogen-agentchat>=0.4.0",
-    "crewai>=0.80.0",
+    "langchain-community>=0.3.0,<1.0.0",
+    "langchain-openai>=0.2.0,<1.0.0",
+    "langchain-anthropic>=0.2.0,<1.0.0",
+    "sentence-transformers>=3.0.0,<4.0.0",
+    "faiss-cpu>=1.9.0,<2.0.0",
+    "pypdf>=5.0.0,<6.0.0",
+    "python-docx>=1.1.0,<2.0.0",
+    "tiktoken>=0.8.0,<1.0.0",
 ]
 
 automation = [
@@ -123,7 +119,7 @@ ui = [
 ]
 
 all = [
-    "ai-automation-framework[dev,rag,agents,automation,cloud,media,web,workflow,monitoring,ui]",
+    "ai-automation-framework[dev,rag,automation,cloud,media,web,workflow,monitoring,ui]",
 ]
 
 [project.urls]
@@ -188,6 +184,7 @@ ignore = [
 python_version = "3.10"
 warn_return_any = true
 warn_unused_configs = true
+disallow_untyped_defs = true
 ignore_missing_imports = true
 exclude = [
     "build",

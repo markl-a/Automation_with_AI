@@ -116,10 +116,10 @@ class Config(BaseModel):
         else:
             load_dotenv()
 
-        def get_env(key: str, default: Any = None) -> Any:
+        def get_env(key: str, default: Optional[str] = None) -> Optional[str]:
             """Get environment variable with or without prefix."""
             # Try with prefix first
-            value = os.getenv(f"{prefix}{key}")
+            value: Optional[str] = os.getenv(f"{prefix}{key}")
             if value is not None:
                 return value
             # Fall back to key without prefix

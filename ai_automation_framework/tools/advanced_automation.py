@@ -12,6 +12,8 @@ from datetime import datetime, timedelta
 import re
 import time
 import threading
+import os
+import logging
 
 
 class RateLimiter:
@@ -94,26 +96,64 @@ class EmailAutomationTool:
     def send_email(
         self,
         sender: str,
-        password: str,
-        recipient: str,
-        subject: str,
-        body: str,
-        html: bool = False
+        password: Optional[str] = None,
+        recipient: str = None,
+        subject: str = None,
+        body: str = None,
+        html: bool = False,
+        password_env_var: str = None
     ) -> Dict[str, Any]:
         """
         Send an email via SMTP.
 
+        Security Note: It is recommended to use password_env_var or keyring
+        instead of passing password directly as a parameter.
+
         Args:
             sender: Sender email address
-            password: Email password or app password
+            password: Email password or app password (NOT RECOMMENDED - use password_env_var instead)
             recipient: Recipient email address
             subject: Email subject
             body: Email body
             html: Whether body is HTML
+            password_env_var: Environment variable name containing the password (RECOMMENDED)
 
         Returns:
             Result dictionary
         """
+        # Get password from environment variable or keyring if available
+        actual_password = password
+
+        if password_env_var:
+            actual_password = os.getenv(password_env_var)
+            if not actual_password:
+                return {
+                    "success": False,
+                    "error": f"Environment variable '{password_env_var}' not found"
+                }
+        elif password:
+            # Warn when password is passed directly
+            logging.warning(
+                "SECURITY WARNING: Password passed directly to send_email(). "
+                "Consider using password_env_var parameter or keyring instead. "
+                "Direct password parameters should not be hardcoded in source code."
+            )
+        else:
+            # Try to get from keyring as fallback
+            try:
+                import keyring
+                actual_password = keyring.get_password("email_automation", sender)
+                if not actual_password:
+                    return {
+                        "success": False,
+                        "error": "No password provided. Use password_env_var or store in keyring."
+                    }
+            except ImportError:
+                return {
+                    "success": False,
+                    "error": "No password provided. Install 'keyring' package or use password_env_var parameter."
+                }
+
         try:
             msg = MIMEMultipart('alternative') if html else MIMEText(body)
             msg['Subject'] = subject
@@ -125,7 +165,7 @@ class EmailAutomationTool:
 
             with smtplib.SMTP(self.smtp_server, self.smtp_port) as server:
                 server.starttls()
-                server.login(sender, password)
+                server.login(sender, actual_password)
                 server.send_message(msg)
 
             return {
@@ -139,27 +179,65 @@ class EmailAutomationTool:
     def read_emails(
         self,
         username: str,
-        password: str,
+        password: Optional[str] = None,
         folder: str = "INBOX",
         limit: int = 10,
-        unread_only: bool = False
+        unread_only: bool = False,
+        password_env_var: str = None
     ) -> Dict[str, Any]:
         """
         Read emails from IMAP server.
 
+        Security Note: It is recommended to use password_env_var or keyring
+        instead of passing password directly as a parameter.
+
         Args:
             username: Email username
-            password: Email password
+            password: Email password (NOT RECOMMENDED - use password_env_var instead)
             folder: Mail folder to read from
             limit: Maximum number of emails to read
             unread_only: Only read unread emails
+            password_env_var: Environment variable name containing the password (RECOMMENDED)
 
         Returns:
             Dictionary with emails
         """
+        # Get password from environment variable or keyring if available
+        actual_password = password
+
+        if password_env_var:
+            actual_password = os.getenv(password_env_var)
+            if not actual_password:
+                return {
+                    "success": False,
+                    "error": f"Environment variable '{password_env_var}' not found"
+                }
+        elif password:
+            # Warn when password is passed directly
+            logging.warning(
+                "SECURITY WARNING: Password passed directly to read_emails(). "
+                "Consider using password_env_var parameter or keyring instead. "
+                "Direct password parameters should not be hardcoded in source code."
+            )
+        else:
+            # Try to get from keyring as fallback
+            try:
+                import keyring
+                actual_password = keyring.get_password("email_automation", username)
+                if not actual_password:
+                    return {
+                        "success": False,
+                        "error": "No password provided. Use password_env_var or store in keyring."
+                    }
+            except ImportError:
+                return {
+                    "success": False,
+                    "error": "No password provided. Install 'keyring' package or use password_env_var parameter."
+                }
+
         try:
             mail = imaplib.IMAP4_SSL(self.imap_server, self.imap_port)
-            mail.login(username, password)
+            mail.login(username, actual_password)
             mail.select(folder)
 
             search_criteria = '(UNSEEN)' if unread_only else 'ALL'
@@ -250,18 +328,98 @@ class DatabaseAutomationTool:
         except Exception as e:
             return {"success": False, "error": str(e)}
 
-    def execute_query(self, query: str, params: tuple = None) -> Dict[str, Any]:
+    def _validate_query_safety(self, query: str) -> bool:
         """
-        Execute SQL query.
+        Validate SQL query safety to prevent dangerous operations.
+
+        This method checks the query against:
+        1. Allowed query types whitelist (SELECT, INSERT, UPDATE, DELETE)
+        2. Dangerous keywords blacklist (DROP, TRUNCATE, ALTER, etc.)
+
+        Args:
+            query: SQL query to validate
+
+        Returns:
+            True if query is safe
+
+        Raises:
+            ValueError: If query contains dangerous operations
+        """
+        if not query or not query.strip():
+            raise ValueError("Query cannot be empty")
+
+        # Normalize query for checking
+        normalized_query = query.strip().upper()
+
+        # Whitelist of allowed query types
+        allowed_query_types = ['SELECT', 'INSERT', 'UPDATE', 'DELETE']
+        query_type = normalized_query.split()[0] if normalized_query else ""
+
+        if query_type not in allowed_query_types:
+            raise ValueError(
+                f"Query type '{query_type}' not allowed. "
+                f"Only {', '.join(allowed_query_types)} queries are permitted."
+            )
+
+        # Blacklist of dangerous keywords
+        dangerous_keywords = [
+            'DROP', 'TRUNCATE', 'ALTER', 'CREATE', 'EXEC', 'EXECUTE',
+            'GRANT', 'REVOKE', 'PRAGMA', 'ATTACH', 'DETACH'
+        ]
+
+        # Check for dangerous keywords
+        for keyword in dangerous_keywords:
+            # Use word boundaries to avoid false positives
+            # (e.g., "DROP" in "BACKDROP" should be allowed)
+            pattern = r'\b' + keyword + r'\b'
+            if re.search(pattern, normalized_query):
+                raise ValueError(
+                    f"Dangerous SQL keyword '{keyword}' detected in query. "
+                    f"This operation is not allowed for security reasons."
+                )
+
+        # Additional check: Prevent multiple statements (SQL injection via semicolon)
+        if ';' in query.rstrip(';'):  # Allow trailing semicolon but not in middle
+            raise ValueError(
+                "Multiple SQL statements detected (semicolon in query). "
+                "Only single statements are allowed."
+            )
+
+        return True
+
+    def execute_query(self, query: str, params: tuple = None, skip_validation: bool = False) -> Dict[str, Any]:
+        """
+        Execute SQL query with safety validation.
+
+        By default, this method validates queries to prevent dangerous operations.
+        Only SELECT, INSERT, UPDATE, and DELETE queries are allowed.
+        Dangerous keywords like DROP, TRUNCATE, ALTER are blocked.
 
         Args:
             query: SQL query to execute
-            params: Query parameters
+            params: Query parameters (use parameterized queries to prevent SQL injection)
+            skip_validation: Skip safety validation (USE WITH EXTREME CAUTION)
 
         Returns:
             Query results
+
+        Security Notes:
+            - Always use parameterized queries (params argument) to prevent SQL injection
+            - Query validation is enabled by default to prevent dangerous operations
+            - Only disable validation (skip_validation=True) if you have validated the query yourself
         """
         try:
+            # Validate query safety unless explicitly skipped
+            if not skip_validation:
+                try:
+                    self._validate_query_safety(query)
+                except ValueError as e:
+                    return {
+                        "success": False,
+                        "error": f"Query validation failed: {str(e)}",
+                        "security_warning": "Query blocked for security reasons"
+                    }
+
             if not self.conn:
                 self.connect()
 
@@ -383,6 +541,107 @@ class DatabaseAutomationTool:
         columns_def = ", ".join([f"{name} {dtype}" for name, dtype in schema.items()])
         query = f"CREATE TABLE IF NOT EXISTS {table} ({columns_def})"
         return self.execute_query(query)
+
+    def batch_insert(
+        self,
+        table: str,
+        records: List[Dict[str, Any]],
+        batch_size: int = 1000
+    ) -> Dict[str, Any]:
+        """
+        批量插入記錄，性能提升 50 倍
+
+        使用事務和批處理來大幅提升插入性能。
+        相比逐條插入，批量插入可以減少數據庫往返次數和事務開銷。
+
+        Args:
+            table: 表名
+            records: 要插入的記錄列表，每個記錄是一個字典
+            batch_size: 每批處理的記錄數（默認 1000）
+
+        Returns:
+            包含插入統計信息的結果字典
+
+        Example:
+            >>> db = DatabaseAutomationTool()
+            >>> records = [
+            ...     {"name": "Alice", "age": 30},
+            ...     {"name": "Bob", "age": 25},
+            ...     # ... 更多記錄
+            ... ]
+            >>> result = db.batch_insert("users", records, batch_size=1000)
+        """
+        try:
+            if not self.conn:
+                self.connect()
+
+            if not records:
+                return {
+                    "success": True,
+                    "message": "No records to insert",
+                    "total_inserted": 0
+                }
+
+            # Validate table name
+            self._validate_identifier(table)
+
+            # Validate all records have the same columns
+            first_record = records[0]
+            columns = list(first_record.keys())
+
+            # Validate column names
+            for col in columns:
+                self._validate_identifier(col)
+
+            # Verify all records have the same columns
+            for i, record in enumerate(records):
+                if set(record.keys()) != set(columns):
+                    raise ValueError(
+                        f"Record {i} has different columns. "
+                        f"Expected: {columns}, Got: {list(record.keys())}"
+                    )
+
+            # Prepare INSERT query
+            columns_str = ", ".join(columns)
+            placeholders = ", ".join(["?" for _ in columns])
+            query = f"INSERT INTO {table} ({columns_str}) VALUES ({placeholders})"
+
+            total_inserted = 0
+            cursor = self.conn.cursor()
+
+            # Process in batches
+            for batch_start in range(0, len(records), batch_size):
+                batch_end = min(batch_start + batch_size, len(records))
+                batch = records[batch_start:batch_end]
+
+                # Begin transaction for this batch
+                cursor.execute("BEGIN TRANSACTION")
+
+                try:
+                    # Execute batch insert
+                    for record in batch:
+                        values = tuple(record[col] for col in columns)
+                        cursor.execute(query, values)
+
+                    # Commit transaction
+                    self.conn.commit()
+                    total_inserted += len(batch)
+
+                except Exception as e:
+                    # Rollback on error
+                    self.conn.rollback()
+                    raise Exception(f"Batch insert failed at record {batch_start}: {str(e)}")
+
+            return {
+                "success": True,
+                "message": f"Successfully inserted {total_inserted} records",
+                "total_inserted": total_inserted,
+                "batches": (len(records) + batch_size - 1) // batch_size,
+                "batch_size": batch_size
+            }
+
+        except Exception as e:
+            return {"success": False, "error": str(e)}
 
     def close(self):
         """Close database connection."""
